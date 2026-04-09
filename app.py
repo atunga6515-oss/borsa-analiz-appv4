@@ -123,25 +123,25 @@ def main():
                     st.subheader("🟢 En İyi Alım Bölgeleri (Destek)")
                     if sr_data.get('best_buy_zones'):
                         for label, val in sr_data['best_buy_zones']:
-                            st.write(f"  ➡️ **{label}:** {val} ₺")
+                            st.write(f"  ➡️ **{label}:** {val:.2f} ₺")
                     else:
                         st.write("Yakın destek bulunamadı.")
                     
                     st.subheader("🔴 En İyi Satım Bölgeleri (Direnç)")
                     if sr_data.get('best_sell_zones'):
                         for label, val in sr_data['best_sell_zones']:
-                            st.write(f"  ➡️ **{label}:** {val} ₺")
+                            st.write(f"  ➡️ **{label}:** {val:.2f} ₺")
                     else:
                         st.write("Yakın direnç bulunamadı.")
                     
                     with st.expander("📐 Fibonacci Seviyeleri"):
                         for name, val in sr_data.get('fibonacci', {}).items():
-                            st.write(f"- **{name}:** {val} ₺")
+                            st.write(f"- **{name}:** {val:.2f} ₺")
                     
                     with st.expander("📊 Pivot Seviyeleri"):
                         pivots = sr_data.get('pivots', {})
                         for name, val in pivots.items():
-                            st.write(f"- **{name}:** {val} ₺")
+                            st.write(f"- **{name}:** {val:.2f} ₺")
 
             with c2:
                 fig = create_advanced_chart(df, sym.upper(), res['risk'], sr_data)
@@ -244,8 +244,8 @@ def main():
                 if 'Değişim (%)' in screener_df.columns:
                     best_gainer = screener_df.loc[screener_df['Değişim (%)'].idxmax()]
                     worst_loser = screener_df.loc[screener_df['Değişim (%)'].idxmin()]
-                    k2.metric("📈 En Çok Yükselen", f"{best_gainer['Hisse']}", f"{best_gainer['Değişim (%)']}%")
-                    k3.metric("📉 En Çok Düşen", f"{worst_loser['Hisse']}", f"{worst_loser['Değişim (%)']}%")
+                    k2.metric("📈 En Çok Yükselen", f"{best_gainer['Hisse']}", f"{float(best_gainer['Değişim (%)']):.2f}%")
+                    k3.metric("📉 En Çok Düşen", f"{worst_loser['Hisse']}", f"{float(worst_loser['Değişim (%)']):.2f}%")
                 
                 st.markdown("---")
                 
@@ -273,7 +273,7 @@ def main():
                     return styles
                 
                 st.success(f"Toplam {len(screener_df)} hisse listelendi.")
-                st.dataframe(screener_df.style.apply(style_all, axis=1), use_container_width=True, height=600)
+                st.dataframe(screener_df.style.apply(style_all, axis=1).format(precision=2), use_container_width=True, height=600)
                 
                 # Özellik 3: CSV Export
                 csv_data = screener_df.to_csv(index=False).encode('utf-8-sig')
@@ -325,7 +325,7 @@ def main():
             persistent_df = get_persistent_signals(current_user, min_days=2)
             if not persistent_df.empty:
                 st.write("**🔁 Ardışık Günlerde Aynı Yönde Sinyal Veren Hisseler:**")
-                st.dataframe(persistent_df, use_container_width=True)
+                st.dataframe(persistent_df.style.format(precision=2), use_container_width=True)
             else:
                 st.info("Henüz birden fazla gün tarama geçmişi oluşmamış. Her gün tarama yaparak tutarlı sinyalleri burada göreceksiniz.")
         
@@ -333,7 +333,7 @@ def main():
         with st.expander("🔔 İzleme Listem (Watchlist)"):
             wl_df = get_watchlist(current_user)
             if not wl_df.empty:
-                st.dataframe(wl_df, use_container_width=True)
+                st.dataframe(wl_df.style.format(precision=2), use_container_width=True)
                 wl_del = st.selectbox("Çıkarılacak Hisse:", wl_df['ticker'].tolist(), key="wl_del")
                 if st.button("🗑️ İzleme Listesinden Çıkar"):
                     remove_from_watchlist(current_user, wl_del)
@@ -380,16 +380,16 @@ def main():
                 st.error(res["error"])
             else:
                 c1, c2, c3, c4 = st.columns(4)
-                c1.metric("Nihai Portföy Değeri", f"₺{res['final_equity']:,.2f}", f"{res['total_return_pct']:.1f}%")
+                c1.metric("Nihai Portföy Değeri", f"₺{res['final_equity']:,.2f}", f"{res['total_return_pct']:.2f}%")
                 c2.metric("Toplam İşlem Sayısı", f"{res['number_of_trades']}")
-                c3.metric("Maksimum Kayıp (Drawdown)", f"{res['max_drawdown_pct']:.1f}%", delta_color="inverse")
-                c4.metric("Al&Tut (Buy-Hold) Getirisi", f"{res['buy_and_hold_return_pct']:.1f}%")
+                c3.metric("Maksimum Kayıp (Drawdown)", f"{res['max_drawdown_pct']:.2f}%", delta_color="inverse")
+                c4.metric("Al&Tut (Buy-Hold) Getirisi", f"{res['buy_and_hold_return_pct']:.2f}%")
                 
                 st.plotly_chart(create_equity_curve_chart(res['equity_curve'], sym.upper()), use_container_width=True)
                 
                 with st.expander("Detaylı İşlem Dökümü (Trades)"):
                     if res['trades']:
-                        st.table(pd.DataFrame(res['trades']))
+                        st.table(pd.DataFrame(res['trades']).style.format(precision=2))
                     else:
                         st.write("Belirtilen süre zarfında AL/SAT sinyali üretilmedi.")
 
@@ -464,7 +464,16 @@ def main():
                     return f'color: {color}'
                 return ''
             
-            st.dataframe(p_df.style.applymap(highlight_pnl, subset=['Kâr/Zarar (₺)', 'Değişim (%)']), use_container_width=True)
+            try:
+                # Pandas 2.1+ için .map, eski sürümler için .applymap (fallback)
+                if hasattr(p_df.style, 'map'):
+                    styled_p_df = p_df.style.map(highlight_pnl, subset=['Kâr/Zarar (₺)', 'Değişim (%)'])
+                else:
+                    styled_p_df = p_df.style.applymap(highlight_pnl, subset=['Kâr/Zarar (₺)', 'Değişim (%)'])
+            except Exception:
+                styled_p_df = p_df # Hata durumunda stil olmadan göster
+
+            st.dataframe(styled_p_df.format(precision=2) if hasattr(styled_p_df, 'format') else styled_p_df, use_container_width=True)
             
             # Toplam Durum
             toplam_maliyet = sum(d['Adet'] * d['Maliyet (₺)'] for d in p_data)
@@ -513,7 +522,7 @@ def main():
         st.subheader("📜 Geçmiş İşlemler")
         kapali_df = pf.kapali_pozisyonlar(current_user)
         if not kapali_df.empty:
-            st.dataframe(kapali_df, use_container_width=True)
+            st.dataframe(kapali_df.style.format(precision=2), use_container_width=True)
             
             with st.expander("🗑️ Geçmiş İşlemi Veritabanından Sil"):
                 del_id = st.selectbox("Silinecek İşlem ID", kapali_df['id'].tolist(), key="del_kapali")
@@ -603,7 +612,7 @@ def main():
                         elif 'Sat' in str(val): styles[i] = 'color: #ff4c4c; font-weight: bold'
                 return styles
             
-            st.dataframe(sum_df.style.apply(style_picks, axis=1), use_container_width=True, hide_index=True)
+            st.dataframe(sum_df.style.apply(style_picks, axis=1).format(precision=2), use_container_width=True, hide_index=True)
             
             st.markdown("---")
             st.subheader("🔬 Detaylı Hisse Analizleri")
@@ -635,14 +644,17 @@ def main():
                             f"+{pick['reversal_bonus']}"
                         ]
                     }
-                    st.dataframe(pd.DataFrame(comp_data), use_container_width=True, hide_index=True)
+                    st.dataframe(pd.DataFrame(comp_data).style.format(precision=2), use_container_width=True, hide_index=True)
                     
                     st.markdown("---")
                     r1, r2, r3 = st.columns(3)
                     risk = pick.get('risk_details', {})
-                    r1.metric("Stop Loss", f"{risk.get('SL', '-')}₺")
-                    r2.metric("Take Profit 1", f"{risk.get('TP1', '-')}₺")
-                    r3.metric("Desteğe Uzaklık", f"%{pick['dist_support_pct']}" if pick['dist_support_pct'] != '-' else '-')
+                    sl_val = risk.get('SL', '-')
+                    tp_val = risk.get('TP1', '-')
+                    r1.metric("Stop Loss", f"{sl_val:.2f}₺" if isinstance(sl_val, (int, float)) else f"{sl_val}₺")
+                    r2.metric("Take Profit 1", f"{tp_val:.2f}₺" if isinstance(tp_val, (int, float)) else f"{tp_val}₺")
+                    r3_val = pick['dist_support_pct']
+                    r3.metric("Desteğe Uzaklık", f"%{float(r3_val):.2f}" if isinstance(r3_val, (int, float)) or (isinstance(r3_val, str) and r3_val.replace('.','',1).isdigit()) else f"%{r3_val}")
                     
                     s1, s2 = st.columns(2)
                     with s1:
@@ -650,7 +662,8 @@ def main():
                         st.write(pick['pattern_text'])
                         st.write(f"**🔥 Dipten Dönüş:** {pick['reversal']}")
                     with s2:
-                        st.write(f"**Dirençe Uzaklık:** %{pick['dist_resist_pct']}")
+                        res_dist = pick['dist_resist_pct']
+                        st.write(f"**Dirençe Uzaklık:** %{float(res_dist):.2f}" if isinstance(res_dist, (int, float)) or (isinstance(res_dist, str) and res_dist.replace('.','',1).isdigit()) else f"**Dirençe Uzaklık:** %{res_dist}")
                         st.write(f"**Sektör:** {pick['sektor']}")
                     
                     if pick['news_headlines']:
