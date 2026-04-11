@@ -323,7 +323,7 @@ def render_login_page():
         st.markdown("""
             <div class="p-header">
                 <div class="p-title">BIST Broker Terminal</div>
-                <div class="p-subtitle">AI-Powered Hybrid Analysis</div>
+                <div class="p-subtitle">AAI-Powered Hybrid Analysis</div>
             </div>
         """, unsafe_allow_html=True)
 
