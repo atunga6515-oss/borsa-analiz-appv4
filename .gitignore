@@ -1,0 +1,12 @@
+# Python geçici dosyaları
+__pycache__/
+*.py[cod]
+
+# Veritabanı dosyaları
+*.db
+
+# Sanal ortam (opsiyonel)
+venv/
+.env
+.streamlit/secrets.tom
+.streamlit
