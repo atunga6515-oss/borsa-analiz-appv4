@@ -21,7 +21,7 @@ import auth
 # Kimlik doğrulama sistemini başlat
 auth.init_auth_db()
 
-st.set_page_config(page_title="BIST Broker Analysis Terminalzzz", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="BIST Broker Analysis Terminal", layout="wide", initial_sidebar_state="expanded")
 
 # --- PROFESYONEL TERMİNAL TASARIMI (SABİT KONTRAST VE OKUNABİLİRLİK) ---
 st.markdown("""
@@ -323,7 +323,7 @@ def render_login_page():
         st.markdown("""
             <div class="p-header">
                 <div class="p-title">BIST Broker Terminal</div>
-                <div class="p-subtitle">AAI-Powered Hybrid Analysis</div>
+                <div class="p-subtitle">AI-Powered Hybrid Analysis</div>
             </div>
         """, unsafe_allow_html=True)
 
