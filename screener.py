@@ -179,7 +179,7 @@ def save_scan_results(results_df: pd.DataFrame, username: str):
     for _, row in results_df.iterrows():
         conn.execute(
             "INSERT INTO scan_history (username, scan_date, ticker, score, decision, price, pct_change) VALUES (?,?,?,?,?,?,?)",
-            (username, today, row.get('Hisse',''), row.get('Yükseliş Potansiyeli Skoru',0), row.get('Karar',''), 
+            (username, today, row.get('Hisse',''), row.get('V6 Hibrit Skor',0), row.get('Piyasa Kararı',''), 
              row.get('Fiyat', 0), row.get('Değişim (%)',0))
         )
     conn.commit()

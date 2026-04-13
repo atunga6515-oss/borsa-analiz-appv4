@@ -9,8 +9,9 @@ import os
 from datetime import datetime
 from data_loader import fetch_data, get_live_price
 from indicators import (calculate_indicators, generate_signals_and_score, 
-                        get_market_regime)
+                        calculate_volume_confirmation, check_bottom_reversal)
 from kap_news import get_sentiment_summary
+from fundamental_analyzer import get_fundamental_data
 from patterns import detect_candlestick_patterns
 from support_resistance import calculate_best_zones
 from screener import get_sector, BIST30_SYMBOLS, BIST100_SYMBOLS, BIST_ALL_SYMBOLS
@@ -241,7 +242,16 @@ def deep_analyze_stock(sym: str, market_regime: dict = None) -> dict:
         if any(w in karar for w in ["Trend", "Lideri", "Potansiyeli"]):
             karar = "⚠️ Bekle (Endeks Freni)"
         
-    composite = min(100, max(0, round(composite, 1)))
+    # V6 HİBRİT SKOR ENTEGRASYONU
+    try:
+        fund_data = get_fundamental_data(sym)
+        tem_skor = fund_data.get('fundamental_score', 50)
+    except Exception:
+        fund_data = {"pe": 0, "pb": 0, "div_yield": 0, "fundamental_score": 50, "status": "Veri Yok"}
+        tem_skor = 50
+    
+    # V6 Hibrit Skor: %60 Teknik Kompozit + %40 Temel Not
+    v6_score = round((composite * 0.6) + (tem_skor * 0.4), 1)
 
     # Detay sözlüğü
     rsi_val = df['RSI_14'].iloc[-1] if 'RSI_14' in df.columns and pd.notna(df['RSI_14'].iloc[-1]) else None
@@ -250,10 +260,16 @@ def deep_analyze_stock(sym: str, market_regime: dict = None) -> dict:
     result.update({
         "fiyat": round(live_px, 2),
         "sektor": get_sector(sym),
-        "kompozit_skor": composite,
-        "Yükseliş Potansiyeli Skoru": composite,
+        "kompozit_skor": v6_score,
+        "V6 Hibrit Skor": v6_score,
+        "teknik_skor": composite,
+        "temel_skor": tem_skor,
+        "pe": fund_data.get('pe', 0),
+        "pb": fund_data.get('pb', 0),
+        "div_yield": fund_data.get('div_yield', 0),
+        "temel_durum": fund_data.get('status', 'Normal'),
+        "graham_value": fund_data.get('graham_value', 0),
         "pgs": sig.get('pgs', 50),
-        "teknik_skor": tech_score,
         "karar": karar,
         "rsi": round(rsi_val, 1) if rsi_val else "-",
         "macd_hist": round(macd_val, 3) if macd_val else "-",
@@ -306,5 +322,5 @@ def find_top_picks(symbol_list: list = None, top_n: int = 5, progress_bar=None) 
             progress_bar.progress((idx + 1) / total, text=f"🔬 {sym} derinlemesine inceleniyor... ({idx+1}/{total})")
 
     # Kompozit skora göre sırala ve en iyileri döndür
-    all_results.sort(key=lambda x: x['Yükseliş Potansiyeli Skoru'], reverse=True)
+    all_results.sort(key=lambda x: x['kompozit_skor'], reverse=True)
     return all_results[:top_n]

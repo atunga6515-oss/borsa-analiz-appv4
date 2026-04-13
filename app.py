@@ -635,7 +635,7 @@ def main():
             </div>
         """, unsafe_allow_html=True)
 
-        custom_min_score = st.sidebar.slider("Min. Yükseliş Potansiyeli Skoru", 0, 100, 0)
+        custom_min_score = st.sidebar.slider("Min. V6 Hibrit Skor", 0, 100, 0)
         
         # Paralel iş parçacığı sayısı
         workers = st.sidebar.slider("⚡ Paralel İşçi Sayısı", 1, 10, 5)
@@ -680,7 +680,7 @@ def main():
             
             # Min skor filtresi
             if custom_min_score > 0:
-                screener_df = screener_df[screener_df['Yükseliş Potansiyeli Skoru'] >= custom_min_score]
+                screener_df = screener_df[screener_df['V6 Hibrit Skor'] >= custom_min_score]
             
             if screener_df.empty:
                 st.warning("Seçilen filtreye uyan hisse bulunamadı.")
@@ -690,7 +690,7 @@ def main():
                 st.subheader("📊 Stratejik Risk vs Yükseliş Potansiyeli Matrisi")
                 fig_matrix = px.scatter(
                     screener_df, 
-                    x="Yükseliş Potansiyeli Skoru", 
+                    x="V6 Hibrit Skor", 
                     y="Güven Skoru (PGS)",
                     text="Hisse",
                     color="Değişim (%)",
@@ -1209,7 +1209,10 @@ def main():
                     "Hisse": r.get('ticker', 'N/A'),
                     "Sektör": r.get('sektor', 'N/A'),
                     "Fiyat (₺)": r.get('fiyat', 0),
-                    "🎯 Yükseliş Potansiyeli Skoru": r.get('kompozit_skor', 0),
+                    "🏆 V6 Hibrit Skor": r.get('kompozit_skor', 0),
+                    "F/K": r.get('pe', 0),
+                    "PD/DD": r.get('pb', 0),
+                    "Temel Durum": r.get('temel_durum', 'Normal'),
                     "🛡️ Güven Skoru (PGS)": r.get('pgs', 50),
                     "Karar": r.get('karar', 'N/A'),
                     "Haber Algısı": f"%{r.get('news_sentiment', 0)}"
@@ -1221,12 +1224,16 @@ def main():
                 styles = [''] * len(row)
                 for i, col in enumerate(sum_df.columns):
                     val = row[col]
-                    if col == '🎯 Yükseliş Potansiyeli Skoru':
+                    if col == '🏆 V6 Hibrit Skor':
                         if val >= 70: styles[i] = 'background-color: #2d6a2e; color: white; font-weight: bold'
                         elif val >= 55: styles[i] = 'background-color: #1a5276; color: white'
                     elif col == '🛡️ Güven Skoru (PGS)':
                         if val >= 80: styles[i] = 'color: #00ff00; font-weight: bold'
                         elif val < 50: styles[i] = 'color: #ff4c4c; font-weight: bold'
+                    elif col == 'Temel Durum':
+                        if 'Kelepir' in str(val): styles[i] = 'background-color: #0d5f30; color: white; font-weight: bold;'
+                        elif 'Balon' in str(val): styles[i] = 'background-color: #8c1010; color: white; font-weight: bold;'
+                        elif 'Emeklilik' in str(val): styles[i] = 'background-color: #1a5286; color: white; font-weight: bold;'
                     elif col == 'Karar':
                         if 'Trend' in str(val) or 'Lideri' in str(val): styles[i] = 'color: #00ff00; font-weight: bold'
                         elif 'Baskı' in str(val) or 'Riskli' in str(val): styles[i] = 'color: #ff4c4c; font-weight: bold'
@@ -1294,21 +1301,33 @@ def main():
                 p_pgs = pick.get('pgs', 50)
                 p_fiyat = pick.get('fiyat', 0)
                 
-                with st.expander(f"{medal} #{rank} - {p_ticker} | Potansiyel: {p_potansiyel} | Güven (PGS): {p_pgs} | {p_fiyat}₺", expanded=(rank <= 3)):
+                with st.expander(f"{medal} #{rank} - {p_ticker} | V6 Hibrit Skor: {p_potansiyel} | Güven (PGS): {p_pgs} | {p_fiyat}₺", expanded=(rank <= 3)):
                     m1, m2, m3, m4 = st.columns(4)
-                    m1.metric("🎯 Yükseliş Potansiyeli", f"{p_potansiyel}/100")
+                    m1.metric("🏆 V6 Hibrit Skor", f"{p_potansiyel}/100")
                     m2.metric("🛡️ Güvenlik (PGS)", f"{p_pgs}/100")
-                    m3.metric("RSI (14)", pick.get('rsi', '-'))
-                    m4.metric("MACD Histogram", pick.get('macd_hist', '-'))
+                    m3.metric("F/K", pick.get('pe', '-'))
+                    m4.metric("PD/DD", pick.get('pb', '-'))
                     
                     st.markdown("---")
-                    st.write("**⚙️ Skor Bileşenleri & Bonus Puanlar:**")
+                    c1, c2, c3 = st.columns(3)
+                    c1.write(f"**🏛️ Temel Not:** {pick.get('temel_skor', 50)}")
+                    c2.write(f"**📈 Teknik Skor:** {pick.get('teknik_skor', 50)}")
+                    c3.write(f"**💎 Graham Adil Değer:** {pick.get('graham_value', 0)} ₺")
+                    
+                    st.markdown("---")
+                    st.write("**⚙️ Hibrit Skor Hesaplaması:**")
+                    v6_data = {
+                        "Modül": ["📊 Teknik Analiz Kompozit", "🏛️ Temel Analiz Notu"],
+                        "Ağırlık": ["%60", "%40"],
+                        "Ham Skor": [pick.get('teknik_skor', 50), pick.get('temel_skor', 50)]
+                    }
+                    st.table(pd.DataFrame(v6_data))
+                    
+                    st.markdown("---")
+                    st.write("**⚙️ Teknik Detaylar (Bonus Puanlar):**")
                     comp_data = {
-                        "Bileşen": ["📊 Teknik Analiz", "📈 Momentum", "🌊 Hacim", "⏰ Çoklu TF", 
-                                   "🕯️ Formasyon", "🛡️ Destek", "📰 Haber", "🔥 Dipten Dönüş"],
-                        "Ağırlık": ["%40", "%10", "%10", "%10", "%5", "%5", "%10", "%10"],
+                        "Bileşen": ["📈 Momentum", "🌊 Hacim", "⏰ Çoklu TF", "🕯️ Formasyon", "🛡️ Destek", "📰 Haber", "🔥 Dipten Dönüş"],
                         "Bonus Puan": [
-                            f"{pick['teknik_skor']} (ana skor)",
                             f"+{pick['momentum_bonus']}",
                             f"+{pick['volume_bonus']}",
                             f"+{pick['tf_bonus']}",
@@ -1318,7 +1337,7 @@ def main():
                             f"+{pick['reversal_bonus']}"
                         ]
                     }
-                    st.dataframe(pd.DataFrame(comp_data).style.format(precision=2), use_container_width=True, hide_index=True)
+                    st.dataframe(pd.DataFrame(comp_data), use_container_width=True, hide_index=True)
                     
                     st.markdown("---")
                     r1, r2, r3 = st.columns(3)
