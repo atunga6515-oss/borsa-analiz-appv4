@@ -428,7 +428,7 @@ def run_screener(symbol_list: list, username: str, progress_bar=None, max_worker
         return pd.DataFrame()
         
     res_df = pd.DataFrame(results)
-    res_df = res_df.sort_values(by="Yükseliş Potansiyeli Skoru", ascending=False).reset_index(drop=True)
+    res_df = res_df.sort_values(by="V6 Hibrit Skor", ascending=False).reset_index(drop=True)
     
     # Tarama sonuçlarını SQLite'a kaydet (Özellik 2)
     save_scan_results(res_df, username)
