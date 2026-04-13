@@ -10,6 +10,7 @@ from indicators import (calculate_indicators, generate_signals_and_score,
                         get_market_regime, check_bottom_reversal)
 from patterns import detect_candlestick_patterns
 from support_resistance import calculate_best_zones
+import trading_goal_manager as tgm
 
 # ============================================================
 # BIST HİSSE LİSTELERİ
@@ -385,7 +386,9 @@ def _analyze_single_stock(sym: str, market_regime: dict = None) -> dict:
             "Hacim Skoru": vol_text,
             "RSI": round(rsi_val, 1) if rsi_val and pd.notna(rsi_val) else "-",
             "Desteğe Uzaklık": dist_sup,
-            "Dirence Uzaklık": dist_res
+            "Dirence Uzaklık": dist_res,
+            "ATR (%)": tgm.calculate_atr_volatility(df)['atr_pct'],
+            "Disiplin": "✅" if tgm.calculate_atr_volatility(df)['is_suitable'] else "❌"
 
         }
     except Exception:

@@ -17,6 +17,7 @@ import plotly.express as px
 from kap_news import render_kap_news_panel, get_sentiment_summary
 from top_picks import (find_top_picks, save_top_picks_history, 
                         get_top_picks_history_dates, get_top_picks_by_date)
+import trading_goal_manager as tgm
 import auth
 
 # Kimlik doğrulama sistemini başlat
@@ -384,6 +385,7 @@ def main():
         "📰 KAP ve Haberler",
         "🌟 Haber Alpha (Alpha Discovery)",
         "🏆 Stratejik Seçki (Top Picks)",
+        "🎯 20 Günlük Trader Disiplini",
         "🔒 Profil ve Güvenlik"
     ])
     
@@ -768,6 +770,9 @@ def main():
                             if isinstance(val, (int, float)):
                                 if val > 0: styles[i] = 'color: #00ff00; font-weight: bold'
                                 elif val < 0: styles[i] = 'color: #ff4c4c; font-weight: bold'
+                        elif col == 'Disiplin':
+                            if '✅' in str(val): styles[i] = 'color: #00ff00; font-weight: bold; text-align: center;'
+                            elif '❌' in str(val): styles[i] = 'color: #ff4c4c; text-align: center;'
                         elif col == '1D+1H Uyum':
                             if 'Çift AL' in str(val): styles[i] = 'background-color: rgba(45, 106, 46, 0.4)'
                             elif 'Çift SAT' in str(val): styles[i] = 'background-color: rgba(146, 43, 33, 0.4)'
@@ -1484,7 +1489,114 @@ def main():
                 st.warning("Şu anki piyasa koşullarında net bir fiyat-haber (Alpha) ayrıcalığı bulunamadı.")
                 
 
-    elif mode == "🔒 Profil ve Güvenlik":
+    elif mode == "🎯 20 Günlük Trader Disiplini":
+        st.title("🎯 20 Günlük Trader Disiplini")
+        st.markdown("""
+        Bu modül, **matematiksel disiplin** ve **sabit kâr** mantığıyla kasanızı büyütmeyi hedefler.
+        Hedef: 20 iş gününün en az 10 gününde **%3 net kâr** yakalamak.
+        """)
+
+        # --- Dashboard ---
+        col1, col2, col3, col4 = st.columns(4)
+        capital = col1.number_input("Başlangıç Sermayesi (TL)", min_value=1000, value=100000, step=1000)
+        daily_target_pct = col2.number_input("Günlük Hedef (%)", min_value=0.1, max_value=10.0, value=3.0)
+        target_days = col3.number_input("Hedeflenen Başarı Günü", min_value=1, max_value=20, value=10)
+        
+        fixed_daily_profit = (capital * daily_target_pct / 100)
+        final_goal = capital + (fixed_daily_profit * target_days)
+        
+        stats = tgm.get_trading_stats(current_user)
+        current_balance = capital + stats['total_profit']
+        progress_pct = min(100.0, (stats['success_days'] / target_days) * 100) if target_days > 0 else 0
+        
+        st.markdown("---")
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("💰 Mevcut Kasa", f"{current_balance:,.0f} TL")
+        m2.metric("🎯 Final Hedefi", f"{final_goal:,.0f} TL", f"+{final_goal - capital:,.0f} TL")
+        m3.metric("✅ Başarılı Gün", f"{stats['success_days']} / {target_days}")
+        m4.metric("📈 Win Rate", f"%{stats['win_rate']}")
+        
+        st.write("**📊 İlerleme Durumu**")
+        st.progress(progress_pct / 100, text=f"Hedef Yolculuğu: {progress_pct:.1f}%")
+        
+        if progress_pct >= 100:
+            st.balloons()
+            st.success("🎊 TEBRİKLER! 20 günlük disiplin hedefinize ulaştınız. Kasanızı başarıyla büyüttünüz.")
+
+        st.markdown("---")
+        
+        # --- Volatilite Bazlı Hisse Önerisi ---
+        st.subheader("🚀 Hedef Uygunluğu Olan Hisseler")
+        st.caption(f"Sadece son 10 günlük ortalama hareketi (ATR) %{daily_target_pct} ve üzeri olan, yani hedefi vurma potansiyeli yüksek hisseler.")
+        
+        # Kullanıcının son tarama sonuçlarını veya BIST 30'u baz alalım
+        scan_list = BIST30_SYMBOLS
+        suitable_stocks = []
+        
+        if st.button("🔍 Volatilite Taramasını Başlat"):
+            prog = st.progress(0)
+            for i, sym in enumerate(scan_list):
+                v_df = fetch_data(sym, "1d", "1mo")
+                vol_data = tgm.calculate_atr_volatility(v_df, window=10)
+                if vol_data['is_suitable']:
+                    # Teknik skoru da indicators'dan alalım
+                    v_df = calculate_indicators(v_df)
+                    sig = generate_signals_and_score(v_df)
+                    suitable_stocks.append({
+                        "Hisse": sym,
+                        "Fiyat": v_df['Close'].iloc[-1],
+                        "ATR (%)": vol_data['atr_pct'],
+                        "Teknik Skor": sig['score'],
+                        "Karar": sig['decision']
+                    })
+                prog.progress((i+1)/len(scan_list))
+            
+            if suitable_stocks:
+                suitable_df = pd.DataFrame(suitable_stocks).sort_values(by="Teknik Skor", ascending=False)
+                st.dataframe(suitable_df.style.format(precision=2), use_container_width=True, hide_index=True)
+            else:
+                st.warning("Şu an yüksek volatilite sunan uygun hisse bulunamadı.")
+
+        st.markdown("---")
+        
+        # --- Günlük İşlem Kaydı ---
+        st.subheader("📝 Günlük İşlem Kaydı")
+        c1, c2, c3 = st.columns([1, 1, 1])
+        trade_sym = c1.text_input("Bugün İşlem Yapılan Hisse", "").upper()
+        if trade_sym:
+            live_px = get_live_price(trade_sym)
+            levels = tgm.get_risk_levels(live_px, target_pct=daily_target_pct)
+            c2.info(f"🎯 Hedef: {levels['target']} ₺")
+            c3.warning(f"🛑 Stop: {levels['stop']} ₺")
+            
+            # Canlı Takip & Disiplin Uyarısı
+            pct_change = 0
+            # Basitleştirilmiş gün içi takip simülasyonu (veya son fiyat üzerinden)
+            current_px = get_live_price(trade_sym)
+            pct_change = ((current_px - live_px) / live_px) * 100
+            
+            if pct_change >= daily_target_pct:
+                st.markdown(f"""
+                <div style="background-color: #064e3b; padding: 20px; border-radius: 10px; border: 2px solid #059669; text-align: center;">
+                    <h2 style="color: #34d399; margin: 0;">✅ GÜNLÜK HEDEF TAMAMLANDI!</h2>
+                    <p style="color: white; font-size: 1.2rem;">{trade_sym} hissesinde %{pct_change:.2f} kâra ulaşıldı. <b>LÜTFEN EKRANI KAPATIN</b> ve disiplini bozmayın.</p>
+                </div>
+                """, unsafe_allow_html=True)
+                if st.button("🏆 Başarılı Günü Kaydet"):
+                    tgm.save_daily_result(current_user, trade_sym, True, fixed_daily_profit, daily_target_pct)
+                    st.success("Başarı kaydedildi. Yarın görüşmek üzere!")
+                    st.rerun()
+            elif pct_change <= -1.5:
+                st.error(f"🛑 STOP SEVİYESİNE ULAŞILDI (%{pct_change:.2f}). Disiplin gereği pozisyonu kapatmanız önerilir.")
+                if st.button("📉 Zararlı Günü Kaydet"):
+                    tgm.save_daily_result(current_user, trade_sym, False, - (capital * 0.015), daily_target_pct)
+                    st.rerun()
+
+        with st.expander("📖 Geçmiş İşlemler"):
+            if stats['history']:
+                st.table(stats['history'])
+            else:
+                st.info("Henüz kayıtlı işlem bulunmuyor.")
         st.title("🔒 Profil ve Güvenlik")
         st.write(f"Mevcut Kullanıcı: **{current_user}**")
         
