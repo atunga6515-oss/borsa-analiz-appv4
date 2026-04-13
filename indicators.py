@@ -166,36 +166,44 @@ def check_bottom_reversal(df: pd.DataFrame) -> dict:
 
 def get_market_regime(xu100_df: pd.DataFrame) -> dict:
     """BIST 100 endeksine bakarak piyasa rejimini (Ayı/Boğa) belirler."""
-    if xu100_df.empty or len(xu100_df) < 50:
-        return {"mode": "Normal", "is_bear": False, "daily_chg": 0}
+    if xu100_df is None or xu100_df.empty or len(xu100_df) < 50:
+        return {"mode": "Normal", "is_bear": False, "daily_chg": 0.0, "rsi": 50.0}
     
-    xu100_df = calculate_indicators(xu100_df)
-    last = xu100_df.iloc[-1]
-    prev = xu100_df.iloc[-2]
-    daily_chg = ((last['Close'] - prev['Close']) / prev['Close']) * 100
-    
-    # Rejim Tespiti (Ayı vs Boğa)
-    ema50 = last.get('EMA_50', 0)
-    ema200 = last.get('EMA_200', 0)
-    
-    is_bear = last['Close'] < ema50
-    mode = "⚖️ TESTEREYE PİYASASI" # Default fallback
-    
-    if daily_chg < -2.0:
-        mode = "🛑 KRİTİK AYI (Sert Satış)"
-    elif is_bear:
-        mode = "⚠️ AYI PİYASASI (Temkinli)"
-    elif last['Close'] > ema50 and last['Close'] > ema200:
-        mode = "🚀 BOĞA PİYASASI (Agresif)"
-    else:
-        mode = "⚖️ TESTEREYE PİYASASI"
+    try:
+        xu100_df = calculate_indicators(xu100_df)
+        last = xu100_df.iloc[-1]
+        prev = xu100_df.iloc[-2]
         
-    return {
-        "mode": mode,
-        "is_bear": is_bear,
-        "daily_chg": round(daily_chg, 2),
-        "rsi": round(last.get('RSI_14', 50), 1)
-    }
+        c_last = float(last['Close'])
+        c_prev = float(prev['Close'])
+        
+        daily_chg = ((c_last - c_prev) / c_prev) * 100.0 if c_prev != 0 else 0.0
+        
+        ema50 = float(last.get('EMA_50', 0.0))
+        ema200 = float(last.get('EMA_200', 0.0))
+        rsi = float(last.get('RSI_14', 50.0))
+        
+        is_bear = c_last < ema50
+        
+        # Garanti atama
+        regime_mode = "⚖️ TESTEREYE PİYASASI"
+        
+        if daily_chg < -2.0:
+            regime_mode = "🛑 KRİTİK AYI (Sert Satış)"
+        elif is_bear:
+            regime_mode = "⚠️ AYI PİYASASI (Temkinli)"
+        elif c_last > ema50 and c_last > ema200:
+            regime_mode = "🚀 BOĞA PİYASASI (Agresif)"
+            
+        return {
+            "mode": regime_mode,
+            "is_bear": is_bear,
+            "daily_chg": round(daily_chg, 2),
+            "rsi": round(rsi, 1)
+        }
+    except Exception:
+        # Kodun çökmesini engelleyen güvenli dönüş
+        return {"mode": "Bilinmeyen", "is_bear": False, "daily_chg": 0.0, "rsi": 50.0}
 
 def generate_signals_and_score(df: pd.DataFrame, market_regime: dict = None, sentiment_score: float = 0.0) -> dict:
     """
