@@ -9,7 +9,7 @@ import os
 from datetime import datetime
 from data_loader import fetch_data, get_live_price
 from indicators import (calculate_indicators, generate_signals_and_score, 
-                        calculate_volume_confirmation, check_bottom_reversal)
+                        calculate_volume_confirmation, check_bottom_reversal, get_market_regime)
 from kap_news import get_sentiment_summary
 from fundamental_analyzer import get_fundamental_data
 from patterns import detect_candlestick_patterns
