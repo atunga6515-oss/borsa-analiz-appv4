@@ -121,7 +121,6 @@ st.markdown("""
         border-radius: 8px !important;
     }
     
-<<<<<<< HEAD
     [data-testid="stMetricLabel"],
     [data-testid="stMetricLabel"] *,
     [data-testid="stMetricLabel"] div,
@@ -129,11 +128,6 @@ st.markdown("""
     [data-testid="stMetricLabel"] span {
         color: #f8fafc !important; /* Çok açık, parlak gri/beyaz (Göz yormayan, okunaklı) */
         opacity: 1 !important;
-=======
-    div[data-testid="stMetricLabel"] label, div[data-testid="stMetricLabel"] span, div[data-testid="stMetricLabel"] p, div[data-testid="stMetricLabel"] {
-        color: #d1d5db !important; /* Açık ve okunabilir gri-beyaz */
-        opacity: 0.9 !important;
->>>>>>> c50633067dbfc162de0fe08aba2bf5814e6eeb6b
     }
 
     div[data-testid="stMetricValue"] {
