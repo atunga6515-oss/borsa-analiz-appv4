@@ -1529,9 +1529,14 @@ def main():
         st.subheader("🚀 Hedef Uygunluğu Olan Hisseler")
         st.caption(f"Sadece son 10 günlük ortalama hareketi (ATR) %{daily_target_pct} ve üzeri olan, yani hedefi vurma potansiyeli yüksek hisseler.")
         
-        # Kullanıcının son tarama sonuçlarını veya BIST 30'u baz alalım
+        # Kullanıcının son tarama sonuçlarını session_state'de tutalım
+        if 'suitable_stocks' not in st.session_state:
+            st.session_state.suitable_stocks = []
+        if 'discipline_trade_sym' not in st.session_state:
+            st.session_state.discipline_trade_sym = ""
+
         scan_list = BIST30_SYMBOLS
-        suitable_stocks = []
+        current_suitable = []
         
         if st.button("🔍 Volatilite Taramasını Başlat"):
             prog = st.progress(0)
@@ -1542,7 +1547,8 @@ def main():
                     # Teknik skoru da indicators'dan alalım
                     v_df = calculate_indicators(v_df)
                     sig = generate_signals_and_score(v_df)
-                    suitable_stocks.append({
+                    current_suitable.append({
+                        "Seç": False,
                         "Hisse": sym,
                         "Fiyat": v_df['Close'].iloc[-1],
                         "ATR (%)": vol_data['atr_pct'],
@@ -1550,19 +1556,41 @@ def main():
                         "Karar": sig['decision']
                     })
                 prog.progress((i+1)/len(scan_list))
+            st.session_state.suitable_stocks = current_suitable
+            st.rerun()
             
-            if suitable_stocks:
-                suitable_df = pd.DataFrame(suitable_stocks).sort_values(by="Teknik Skor", ascending=False)
-                st.dataframe(suitable_df.style.format(precision=2), use_container_width=True, hide_index=True)
-            else:
-                st.warning("Şu an yüksek volatilite sunan uygun hisse bulunamadı.")
+        if st.session_state.suitable_stocks:
+            suitable_df = pd.DataFrame(st.session_state.suitable_stocks).sort_values(by="Teknik Skor", ascending=False)
+            
+            edited_df = st.data_editor(
+                suitable_df,
+                column_config={
+                    "Seç": st.column_config.CheckboxColumn("Seç", default=False),
+                    "Teknik Skor": st.column_config.ProgressColumn("Güç", format="%d", min_value=0, max_value=100)
+                },
+                use_container_width=True,
+                hide_index=True,
+                key="discipline_editor"
+            )
+            
+            # Seçim değiştiyse trade_sym'i güncelle
+            selected_rows = edited_df[edited_df["Seç"] == True]
+            if not selected_rows.empty:
+                new_sym = selected_rows.iloc[-1]["Hisse"]
+                if new_sym != st.session_state.discipline_trade_sym:
+                    st.session_state.discipline_trade_sym = new_sym
+                    st.rerun()
+        else:
+            if not st.session_state.suitable_stocks:
+                st.info("Hisse bulmak için yukarıdaki taramayı başlatın.")
 
         st.markdown("---")
         
         # --- Günlük İşlem Kaydı ---
         st.subheader("📝 Günlük İşlem Kaydı")
         c1, c2, c3 = st.columns([1, 1, 1])
-        trade_sym = c1.text_input("Bugün İşlem Yapılan Hisse", "").upper()
+        # session_state'den gelen varsayılan değer
+        trade_sym = c1.text_input("Bugün İşlem Yapılan Hisse", st.session_state.discipline_trade_sym).upper()
         if trade_sym:
             live_px = get_live_price(trade_sym)
             levels = tgm.get_risk_levels(live_px, target_pct=daily_target_pct)
