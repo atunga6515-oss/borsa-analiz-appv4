@@ -158,19 +158,23 @@ def get_sentiment_summary(ticker):
     if ai_results:
         # AI Başarılı
         for i, item in enumerate(news):
-            # AI sonucunu eşleştir (index bazlı)
             ai_data = next((x for x in ai_results if x.get('index') == i+1), None)
             if ai_data:
-                # Zaman Aşımı (Time Decay) Hesapla
                 try:
                     pub_date = email.utils.parsedate_to_datetime(item['date'])
                     if pub_date.tzinfo is None:
                         pub_date = pub_date.replace(tzinfo=timezone.utc)
                     days_old = (now - pub_date).days
-                    # Çarpan: 1. günde ~0.83, 7. günde ~0.41 etkisi kalır
-                    weight = 1.0 / (1 + 0.2 * max(0, days_old))
+                    date_str = pub_date.strftime("%d.%m.%Y")
+                    
+                    if days_old > 15:
+                        weight = 0.0 # 15 günden eski haberler fiyatlandı, skora etki edemez
+                    else:
+                        weight = 1.0 / (1 + 0.2 * max(0, days_old))
                 except:
-                    weight = 0.5 # Tarih okunamazsa orta değer
+                    weight = 0.0
+                    date_str = "Tarihsiz"
+                    days_old = 99
 
                 score = ai_data.get('score', 0)
                 weighted_score = score * weight
@@ -181,7 +185,9 @@ def get_sentiment_summary(ticker):
                     "weighted_score": round(weighted_score, 2),
                     "weight": round(weight, 2),
                     "category": ai_data.get('category', 'Diğer'),
-                    "reason": ai_data.get('reason', '')
+                    "reason": ai_data.get('reason', ''),
+                    "date_str": date_str,
+                    "days_old": days_old
                 })
                 total_weighted_score += weighted_score
                 total_weight += weight
@@ -198,13 +204,19 @@ def get_sentiment_summary(ticker):
             n = sum(1 for w in negatif_kelimeler if w in t_low)
             score = 0.5 if p > n else -0.5 if n > p else 0
             
-            # Fallback için de basit decay uygula
             try:
                 pub_date = email.utils.parsedate_to_datetime(item['date'])
                 days_old = (now - pub_date.replace(tzinfo=timezone.utc)).days
-                weight = 1.0 / (1 + 0.2 * max(0, days_old))
+                date_str = pub_date.strftime("%d.%m.%Y")
+                
+                if days_old > 15:
+                    weight = 0.0
+                else:
+                    weight = 1.0 / (1 + 0.2 * max(0, days_old))
             except:
-                weight = 0.5
+                weight = 0.0
+                date_str = "Tarihsiz"
+                days_old = 99
                 
             weighted_score = score * weight
             analyzed_list.append({
@@ -213,7 +225,9 @@ def get_sentiment_summary(ticker):
                 "weighted_score": round(weighted_score, 2),
                 "weight": round(weight, 2),
                 "category": "Genel Haber",
-                "reason": "Kelime bazlı analiz"
+                "reason": "Kelime bazlı analiz",
+                "date_str": date_str,
+                "days_old": days_old
             })
             total_weighted_score += weighted_score
             total_weight += weight
@@ -266,11 +280,16 @@ def render_kap_news_panel():
                     st.markdown(f"""
                         <div style="border-left: 5px solid {b_color}; padding: 10px; margin-bottom: 10px; background-color: rgba(255,255,255,0.05); border-radius: 0 5px 5px 0;">
                             <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <span style="background-color: {b_color}; color: {t_color}; padding: 2px 8px; border-radius: 10px; font-size: 0.8rem; font-weight: bold;">
-                                    {res['category']} | Ham Skor: {s:+.1f}
-                                </span>
+                                <div>
+                                    <span style="background-color: {b_color}; color: {t_color}; padding: 2px 8px; border-radius: 10px; font-size: 0.8rem; font-weight: bold;">
+                                        {res['category']} | Skor: {s:+.1f}
+                                    </span>
+                                    <span style="margin-left: 8px; font-size: 0.8rem; color: #a5b1c2;">
+                                        🕒 {res.get('date_str', '')} ({res.get('days_old', 0)} gün önce)
+                                    </span>
+                                </div>
                                 <span style="color: gray; font-size: 0.75rem; font-weight: bold;">
-                                    Etki Ağırlığı: %{w*100:.0f} → Hibrit: {ws:+.2f}
+                                    Etki: %{w*100:.0f} → {ws:+.2f}
                                 </span>
                             </div>
                             <p style="margin: 8px 0 0 0; font-size: 1rem;">{res['title']}</p>
