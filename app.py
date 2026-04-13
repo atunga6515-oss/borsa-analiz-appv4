@@ -757,9 +757,13 @@ def main():
                             if val < 50: styles[i] = 'color: #ff4c4c; font-weight: bold'
                             elif val >= 80: styles[i] = 'color: #00ff00; font-weight: bold'
                         elif col == 'Graham Potansiyeli (%)':
-                            if pd.notna(val) and float(val) > 30.0: styles[i] = 'background-color: #0b5345; color: #00ff00; font-weight: bold;'
-                            elif pd.notna(val) and float(val) > 0.0: styles[i] = 'color: #00ff00;'
-                            elif pd.notna(val) and float(val) < 0.0: styles[i] = 'color: #ff4c4c;'
+                            try:
+                                f_val = float(val) if pd.notna(val) else 0.0
+                                if f_val > 30.0: styles[i] = 'background-color: #0b5345; color: #00ff00; font-weight: bold;'
+                                elif f_val > 0.0: styles[i] = 'color: #00ff00;'
+                                elif f_val < 0.0: styles[i] = 'color: #ff4c4c;'
+                            except (ValueError, TypeError):
+                                pass
                         elif col == 'Değişim (%)':
                             if isinstance(val, (int, float)):
                                 if val > 0: styles[i] = 'color: #00ff00; font-weight: bold'
@@ -1342,7 +1346,12 @@ def main():
                     c1, c2, c3 = st.columns(3)
                     c1.write(f"**🏛️ Temel Not:** {pick.get('temel_skor', 50)}")
                     c2.write(f"**📈 Teknik Skor:** {pick.get('teknik_skor', 50)}")
-                    c3.write(f"**💎 Graham Adil Değer:** {pick.get('graham_value', 0)} ₺")
+                    
+                    g_val_disp = pick.get('graham_value', 'N/A')
+                    if isinstance(g_val_disp, (int, float)) and g_val_disp > 0:
+                        c3.write(f"**💎 Graham Adil Değer:** {g_val_disp:.2f} ₺")
+                    else:
+                        c3.write(f"**💎 Graham Adil Değer:** {g_val_disp}")
                     
                     st.markdown("---")
                     st.write("**⚙️ Hibrit Skor Hesaplaması:**")

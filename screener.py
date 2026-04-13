@@ -361,7 +361,8 @@ def _analyze_single_stock(sym: str, market_regime: dict = None) -> dict:
         # Graham Güvenlik Marjı / Potansiyel (%)
         g_val = fund_data.get('graham_value', 0.0)
         g_pot = 0.0
-        if g_val > 0 and display_price > 0:
+        # g_val string (N/A) olabilir, kontrol et
+        if isinstance(g_val, (int, float)) and g_val > 0 and display_price > 0:
             g_pot = round(((g_val - display_price) / display_price) * 100, 1)
 
         return {

@@ -11,14 +11,19 @@ def get_fundamental_data(ticker_symbol: str) -> dict:
         ticker = yf.Ticker(tkr)
         info = ticker.info
         
-        # Temel verileri güvenli çek
-        pe = info.get("trailingPE", 0)
-        pb = info.get("priceToBook", 0)
-        eps = info.get("trailingEps", 0)
-        bv = info.get("bookValue", 0)
-        div_yield = info.get("dividendYield", 0)
+        # 1. Temel verileri ROBŪST çek (Alternatif anahtarları dene)
+        pe = info.get("trailingPE") or info.get("forwardPE") or 0
+        pb = info.get("priceToBook") or 0
+        eps = info.get("trailingEps") or info.get("forwardEps") or info.get("epsTrailingTwelveMonths") or 0
+        bv = info.get("bookValue") or 0
+        div_yield = info.get("dividendYield") or 0
+        curr_price = info.get("currentPrice") or info.get("previousClose") or 0
         
-        # None gelirse düzelt
+        # Eğer BV yoksa ama fiyati ve PB'si varsa BV = Price / PB
+        if not bv and pb and curr_price:
+            bv = curr_price / pb
+
+        # Sayısal dönüşümler
         pe = float(pe) if pe is not None else 0.0
         pb = float(pb) if pb is not None else 0.0
         eps = float(eps) if eps is not None else 0.0
@@ -30,44 +35,30 @@ def get_fundamental_data(ticker_symbol: str) -> dict:
         if eps > 0 and bv > 0:
             graham_value = math.sqrt(22.5 * eps * bv)
             
-        # Temel Analiz Skoru (0-100)
-        # Basit bir puanlama: 
-        # PE ne kadar düşükse o kadar iyi (Optimal 5-15 arası). PE < 0 ise zarar açıklıyor, 0 puan. PE > 50 ise şişik, 0 puan.
-        # PB ne kadar düşükse o kadar iyi (Optimal 0.5 - 2 arası).
-        # Dividend varlığı + puan.
+        # Skorlama Sistemi (Robust)
+        score = 50
+        if 0 < pe <= 12: score += 20
+        elif 12 < pe <= 25: score += 10
+        elif pe > 45 or pe <= 0: score -= 15
         
-        score = 50 # Ortalama başlangıç
+        if 0 < pb <= 1.5: score += 20
+        elif 1.5 < pb <= 4.0: score += 5
+        elif pb > 10.0: score -= 20
+
+        if div_yield > 4.0: score += 10
         
-        if 0 < pe <= 10:
-            score += 20
-        elif 10 < pe <= 20:
-            score += 10
-        elif pe > 40:
-            score -= 20
-        elif pe == 0:
-            score -= 10 # Data yok veya zarar
-            
-        if 0 < pb <= 1.2:
-            score += 20
-        elif 1.2 < pb <= 3.0:
-            score += 5
-        elif pb > 8.0:
-            score -= 20
-            
-        if div_yield > 4.0:
-            score += 10 # Yüksek temettü
-            
-        # Skor Sınırlandırması
         score = max(0, min(100, score))
         
         # Durum Etiketleri
         durum = "Normal"
-        if pb > 0 and pb < 1.1 and pe > 0 and pe < 10:
+        if pb > 0 and pb < 1.1 and pe > 0 and pe < 12:
             durum = "Kelepir 💎"
-        elif pb > 10 or pe > 35:
+        elif pb > 10 or pe > 40:
             durum = "Balon ⚠️"
         elif div_yield > 5.0:
             durum = "Emeklilik 🏖️"
+        elif not pe and not pb:
+             durum = "Veri Kısıtlı"
             
         return {
             "pe": round(pe, 2),
@@ -75,14 +66,13 @@ def get_fundamental_data(ticker_symbol: str) -> dict:
             "eps": round(eps, 2),
             "bv": round(bv, 2),
             "div_yield": round(div_yield, 2),
-            "graham_value": round(graham_value, 2),
+            "graham_value": round(graham_value, 2) if graham_value > 0 else "N/A",
             "fundamental_score": score,
             "status": durum
         }
         
     except Exception:
-        # Data çekilemezse boş taslak yolla
         return {
             "pe": 0.0, "pb": 0.0, "eps": 0.0, "bv": 0.0, "div_yield": 0.0,
-            "graham_value": 0.0, "fundamental_score": 50, "status": "Veri Yok"
+            "graham_value": "N/A", "fundamental_score": 50, "status": "Veri Yok"
         }
