@@ -2,12 +2,12 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pandas as pd
 
-def create_advanced_chart(df: pd.DataFrame, symbol: str, risk: dict = None, sr_data: dict = None) -> go.Figure:
+def create_advanced_chart(df: pd.DataFrame, symbol: str, risk: dict = None, sr_data: dict = None, sentiment_score: float = None) -> go.Figure:
     if df.empty:
         return go.Figure()
 
-    fig = make_subplots(rows=3, cols=1, shared_xaxes=True, 
-                        vertical_spacing=0.03, row_heights=[0.6, 0.2, 0.2])
+    fig = make_subplots(rows=4, cols=1, shared_xaxes=True, 
+                        vertical_spacing=0.02, row_heights=[0.6, 0.15, 0.15, 0.1]) # 4. Satır eklendi Sentiment için
 
     fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'],
                                  low=df['Low'], close=df['Close'], name=f'{symbol}'),
@@ -65,7 +65,50 @@ def create_advanced_chart(df: pd.DataFrame, symbol: str, risk: dict = None, sr_d
         fig.add_hline(y=70, line_dash="dot", line_color="red", row=3, col=1)
         fig.add_hline(y=30, line_dash="dot", line_color="green", row=3, col=1)
 
+    # Sentiment Overlay (4. Satır)
+    if sentiment_score is not None:
+        # Son günün tarihinden geriye dönük küçük bir bar çizip bütün bir bandı kaplayabiliriz.
+        # Veya sadece mevcut sentiment rengini belirleyip güncel bir bar atabiliriz.
+        s_color = 'green' if sentiment_score > 0.3 else 'red' if sentiment_score < -0.3 else 'gray'
+        s_text = "Pozitif" if sentiment_score > 0.3 else "Negatif" if sentiment_score < -0.3 else "Nötr"
+        
+        # Son güne ait bar grafiği
+        fig.add_trace(go.Bar(x=df.index[-5:], y=[abs(sentiment_score)]*5, marker_color=s_color, name='AI Sentiment', text=s_text), row=4, col=1)
+        fig.add_annotation(x=df.index[-1], y=abs(sentiment_score)*1.1, text=f"AI Duygu: {sentiment_score:.2f} ({s_text})", showarrow=False, font=dict(color="white"), row=4, col=1)
+        fig.update_yaxes(visible=False, row=4, col=1)
+
     fig.update_layout(title=f'{symbol} Gelişmiş Analiz', template='plotly_dark', height=800, margin=dict(l=20, r=20, t=50, b=20), xaxis_rangeslider_visible=False, showlegend=False)
+    return fig
+
+def create_telegram_card(symbol: str, price: float, score: float, rsi: float, macd_signal: str) -> go.Figure:
+    """Telegram botu için 400x400 px minimalist gösterge kartı grafiği"""
+    fig = go.Figure()
+    
+    # Arka plan tasarımı
+    fig.add_shape(type="rect", x0=0, y0=0, x1=1, y1=1, fillcolor="#11141a", layer="below", line_width=0)
+    
+    # Başlık
+    fig.add_annotation(x=0.5, y=0.9, text=f"📉 {symbol} ANALİZ RAPORU", font=dict(size=24, color="#4ade80", family="Arial Black"), showarrow=False)
+    
+    # Fiyat
+    fig.add_annotation(x=0.5, y=0.75, text=f"Fiyat: {price:.2f} ₺", font=dict(size=28, color="#f1f5f9"), showarrow=False)
+    
+    # Metrikler
+    s_color = "green" if score > 70 else "red" if score < 30 else "orange"
+    fig.add_annotation(x=0.5, y=0.55, text=f"🧠 AI & Teknik Skor: {score:.1f}/100", font=dict(size=20, color=s_color), showarrow=False)
+    
+    r_color = "red" if rsi > 70 else "green" if rsi < 30 else "#f1f5f9"
+    fig.add_annotation(x=0.5, y=0.40, text=f"📊 RSI: {rsi:.1f}", font=dict(size=18, color=r_color), showarrow=False)
+    
+    m_color = "green" if macd_signal == "AL" else "red" if macd_signal == "SAT" else "orange"
+    fig.add_annotation(x=0.5, y=0.25, text=f"📈 MACD: {macd_signal}", font=dict(size=18, color=m_color), showarrow=False)
+    
+    fig.update_layout(
+        xaxis=dict(visible=False, range=[0, 1]),
+        yaxis=dict(visible=False, range=[0, 1]),
+        width=400, height=400, margin=dict(l=10, r=10, t=10, b=10),
+        plot_bgcolor="#11141a", paper_bgcolor="#11141a"
+    )
     return fig
 
 def create_ml_chart(df: pd.DataFrame, ml_data: dict, symbol: str) -> go.Figure:

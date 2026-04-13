@@ -121,6 +121,7 @@ def _download_from_yfinance(ticker: str, interval: str, start: str = None, perio
 
         if data.empty:
             return pd.DataFrame()
+        data.ffill(inplace=True)
         data.dropna(inplace=True)
         return data
     except Exception:

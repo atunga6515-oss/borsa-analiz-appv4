@@ -22,17 +22,24 @@ def _get_conn():
             not_text TEXT
         )
     """)
+    # Migration (Eski veritabanına yeni kolonları ekleme denemesi)
+    try:
+        conn.execute("ALTER TABLE portfolio ADD COLUMN sl REAL")
+        conn.execute("ALTER TABLE portfolio ADD COLUMN tp REAL")
+        conn.execute("ALTER TABLE portfolio ADD COLUMN var REAL")
+    except sqlite3.OperationalError:
+        pass # Kolonlar zaten ekliyse hatayı yok say
     conn.commit()
     return conn
 
 
-def alis_yap(username: str, ticker: str, adet: float, fiyat: float, not_text: str = ""):
+def alis_yap(username: str, ticker: str, adet: float, fiyat: float, not_text: str = "", sl: float = None, tp: float = None, var_risk: float = None):
     """Sanal portföye hisse alımı ekler."""
     conn = _get_conn()
     conn.execute("""
-        INSERT INTO portfolio (username, ticker, adet, alis_fiyati, alis_tarihi, durum, not_text)
-        VALUES (?, ?, ?, ?, ?, 'ACIK', ?)
-    """, (username, ticker.upper(), adet, fiyat, datetime.now().strftime("%Y-%m-%d %H:%M"), not_text))
+        INSERT INTO portfolio (username, ticker, adet, alis_fiyati, alis_tarihi, durum, not_text, sl, tp, var)
+        VALUES (?, ?, ?, ?, ?, 'ACIK', ?, ?, ?, ?)
+    """, (username, ticker.upper(), adet, fiyat, datetime.now().strftime("%Y-%m-%d %H:%M"), not_text, sl, tp, var_risk))
     conn.commit()
     conn.close()
 
@@ -52,7 +59,7 @@ def acik_pozisyonlar(username: str) -> pd.DataFrame:
     """Belirli kullanıcıya ait tüm açık (satılmamış) pozisyonları döndürür."""
     conn = _get_conn()
     df = pd.read_sql_query(
-        "SELECT id, ticker, adet, alis_fiyati, alis_tarihi, not_text FROM portfolio WHERE durum='ACIK' AND username=? ORDER BY alis_tarihi DESC",
+        "SELECT id, ticker, adet, alis_fiyati, alis_tarihi, not_text, sl, tp, var FROM portfolio WHERE durum='ACIK' AND username=? ORDER BY alis_tarihi DESC",
         conn, params=(username,)
     )
     conn.close()
@@ -63,7 +70,7 @@ def kapali_pozisyonlar(username: str) -> pd.DataFrame:
     """Belirli kullanıcıya ait tüm kapatılmış (satılmış) pozisyonları döndürür."""
     conn = _get_conn()
     df = pd.read_sql_query(
-        "SELECT id, ticker, adet, alis_fiyati, alis_tarihi, satis_fiyati, satis_tarihi, not_text FROM portfolio WHERE durum='KAPALI' AND username=? ORDER BY satis_tarihi DESC",
+        "SELECT id, ticker, adet, alis_fiyati, alis_tarihi, satis_fiyati, satis_tarihi, not_text, sl, tp, var FROM portfolio WHERE durum='KAPALI' AND username=? ORDER BY satis_tarihi DESC",
         conn, params=(username,)
     )
     conn.close()

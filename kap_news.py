@@ -22,6 +22,7 @@ def _init_gemini():
             return genai.GenerativeModel('models/gemini-1.5-flash')
     return None
 
+@st.cache_data(ttl=3600, show_spinner=False)
 def analyze_sentiment_with_ai(news_items):
     """
     Haber listesini Gemini AI ile batch olarak analiz eder.

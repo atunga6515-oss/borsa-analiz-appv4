@@ -24,10 +24,11 @@ auth.init_auth_db()
 st.set_page_config(page_title="BIST Broker Analysis Terminal", layout="wide", initial_sidebar_state="expanded")
 
 # --- PROFESYONEL TERMİNAL TASARIMI (SABİT KONTRAST VE OKUNABİLİRLİK) ---
-st.markdown("""
-<style>
-    :root {
-        --terminal-bg: #11141a; 
+if not st.session_state.get('logged_in', False):
+    st.markdown("""
+    <style>
+        :root {
+            --terminal-bg: #11141a; 
         --content-bg: #161a21; 
         --emerald: #4ade80;   
         --soft-white: #f1f5f9;  
@@ -575,7 +576,7 @@ def main():
                             st.write(f"- **{name}:** {val:.2f} ₺")
 
             with c2:
-                fig = create_advanced_chart(df, sym.upper(), res['risk'], sr_data)
+                fig = create_advanced_chart(df, sym.upper(), res['risk'], sr_data, sent_score)
                 st.plotly_chart(fig, use_container_width=True)
 
     elif mode == "🔍 Piyasa Tarama Terminali (Screener)":
@@ -866,6 +867,21 @@ def main():
                         st.write("**Stratejik Not:**")
                         st.caption("Bu model, Random Forest mimarisi kullanarak geçmiş volatiliteyi 'Genişleyen Huni' grafiğine yansıtır. Vade uzadıkça belirsizlik (huni genişliği) istatistiksel olarak artar.")
                 
+                # --- OTONOM HİBRİT ALARM (V5) KONTROLÜ ---
+                try:
+                    from alerts import check_hybrid_alerts
+                    from kap_news import get_sentiment_summary
+                    from indicators import generate_signals_and_score, get_market_regime
+                    xu100_temp = fetch_data("XU100", "1d", "1mo")
+                    regime_temp = get_market_regime(xu100_temp)
+                    sent_val, _ = get_sentiment_summary(sym)
+                    sig_res = generate_signals_and_score(df_long, market_regime=regime_temp, sentiment_score=sent_val)
+                    
+                    if check_hybrid_alerts(sym, sig_res.get('score', 0), current_px, sent_val, last_est):
+                        st.success("🚨 **Hibrit Algoritma Uyarıyor:** Bu hisse Otonom Trading (V5) algoritmamızın tüm Perfect Setup kriterlerini (+80 Puan, Pozitif AI Haber Akışı, Yüksek ML Hedefi) başarıyla karşılıyor. Telegram acil durum bildirimi gönderildi!")
+                except Exception as e:
+                    pass
+
                 st.info("💡 **Huni Okuma Kılavuzu:** İç halka %68 (1 SD), dış halka %95 (2 SD) olasılık kümesini temsil eder. Fiyatın huni içinde kalma olasılığı istatistiksel olarak yüksektir.")
 
     elif mode == "💼 Gelişmiş Backtest":
@@ -928,8 +944,21 @@ def main():
                 if not is_valid_ticker:
                     st.warning("Piyasada olmayan veya teyit edilemeyen bir hisseyi ekleyemezsiniz.")
                 else:
-                    pf.alis_yap(current_user, t_sym, t_adet, t_fiyat, t_not)
-                    st.success(f"{t_sym} portföye eklendi!")
+                    # Otonom Risk Parametrelerini Hesapla (ATR bazlı dinamik SL/TP)
+                    sl_val, tp_val, var_val = None, None, None
+                    try:
+                        df_risk = fetch_data(t_sym, "1d", "6mo")
+                        if not df_risk.empty and len(df_risk) > 20:
+                            ind_res = calculate_indicators(df_risk)
+                            atr = ind_res['ATR'].iloc[-1]
+                            sl_val = round(float(t_fiyat) - (atr * 1.5), 2) # Risk Katsayısı: 1.5X ATR
+                            tp_val = round(float(t_fiyat) + (atr * 3.0), 2) # Ödül Katsayısı: 3.0X ATR
+                            var_val = round((float(t_fiyat) - sl_val) * float(t_adet), 2) # VaR: Total Riskteki Sermaye
+                    except Exception:
+                        pass
+                        
+                    pf.alis_yap(current_user, t_sym, t_adet, t_fiyat, t_not, sl_val, tp_val, var_val)
+                    st.success(f"{t_sym} portföye eklendi! (Otomatik SL: {sl_val} ₺, TP: {tp_val} ₺)")
                     st.rerun()
 
         # Açık Pozisyonlar
@@ -957,12 +986,20 @@ def main():
                     kar_zarar = guncel_deger - maliyet
                     kz_yuzde = (kar_zarar / maliyet) * 100 if maliyet > 0 else 0
                     
+                    # Risk durumunu hesapla
+                    sl_text = f"{row.get('sl', 0):.2f}" if pd.notna(row.get('sl')) else "Yok"
+                    tp_text = f"{row.get('tp', 0):.2f}" if pd.notna(row.get('tp')) else "Yok"
+                    var_text = f"{row.get('var', 0):.2f}" if pd.notna(row.get('var')) else "Yok"
+                    
                     p_data.append({
                         "ID": row['id'],
                         "Hisse": row['ticker'],
                         "Adet": row['adet'],
                         "Maliyet (₺)": round(row['alis_fiyati'], 2),
                         "Güncel (₺)": round(curr_price, 2),
+                        "Stop-Loss": sl_text,
+                        "Take-Profit": tp_text,
+                        "Risk (VaR) ₺": var_text,
                         "Kâr/Zarar (₺)": round(kar_zarar, 2),
                         "Değişim (%)": round(kz_yuzde, 2),
                         "Tarih": row['alis_tarihi']
