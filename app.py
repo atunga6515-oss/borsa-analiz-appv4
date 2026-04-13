@@ -1216,7 +1216,31 @@ def main():
                         elif 'Baskı' in str(val) or 'Riskli' in str(val): styles[i] = 'color: #ff4c4c; font-weight: bold'
                 return styles
             
-            st.dataframe(sum_df.style.apply(style_picks, axis=1).format(precision=2), use_container_width=True, hide_index=True)
+            if "Seç" not in sum_df.columns:
+                sum_df.insert(0, "Seç", False)
+                
+            edited_sum_df = st.data_editor(
+                sum_df.style.apply(style_picks, axis=1).format(precision=2),
+                column_config={
+                    "Seç": st.column_config.CheckboxColumn("Seç", default=False)
+                },
+                disabled=[col for col in sum_df.columns if col != "Seç"],
+                hide_index=True,
+                use_container_width=True,
+                key="toppicks_editor"
+            )
+            
+            selected_picks = edited_sum_df[edited_sum_df["Seç"] == True]
+            if not selected_picks.empty:
+                st.write(f"✅ {len(selected_picks)} hisse seçildi.")
+                with st.expander("📥 Seçilenleri Portföye Ekle", expanded=True):
+                    adet = st.number_input("Varsayılan Adet", min_value=1.0, value=100.0, key="tp_adet")
+                    if st.button("Hepsini Ekle", type="primary", key="tp_ekle"):
+                        for _, row in selected_picks.iterrows():
+                            ticker = row['Hisse']
+                            fiyat = float(row['Fiyat (₺)']) if 'Fiyat (₺)' in row else 1.0
+                            pf.alis_yap(current_user, ticker, adet, fiyat, not_text="Top Picks üzerinden eklendi.")
+                        st.success("Seçilen hisseler portföyünüze eklendi!")
             
             # --- TELEGRAM TOP PICKS RAPORU ---
             if st.button("📤 Haftalık Listeyi Telegram'a Gönder", use_container_width=True):
