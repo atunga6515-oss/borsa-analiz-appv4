@@ -660,11 +660,11 @@ def main():
             
             # Filtreleme uygula
             if filter_option == "Sadece Güçlü Al":
-                screener_df = screener_df[screener_df['Karar'] == 'Güçlü Al']
+                screener_df = screener_df[screener_df['Piyasa Kararı'] == 'Güçlü Al']
             elif filter_option == "Sadece Al":
-                screener_df = screener_df[screener_df['Karar'].isin(['Al', 'Güçlü Al'])]
+                screener_df = screener_df[screener_df['Piyasa Kararı'].isin(['Al', 'Güçlü Al'])]
             elif filter_option == "Sadece Sat / Güçlü Sat":
-                screener_df = screener_df[screener_df['Karar'].str.contains('Sat')]
+                screener_df = screener_df[screener_df['Piyasa Kararı'].str.contains('Sat')]
             elif filter_option == "RSI < 30 (Aşırı Satım)":
                 screener_df = screener_df[screener_df['RSI'] != '-']
                 screener_df = screener_df[screener_df['RSI'].astype(float) < 30]
@@ -695,7 +695,7 @@ def main():
                     text="Hisse",
                     color="Değişim (%)",
                     size="Fiyat",
-                    hover_data=["Karar", "ADX"],
+                    hover_data=["Piyasa Kararı", "ADX"],
                     title="Hisse Dağılım Matrisi (Büyüklük: Fiyat)",
                     template="plotly_dark",
                     color_continuous_scale="RdYlGn"
