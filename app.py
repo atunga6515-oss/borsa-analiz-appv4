@@ -11,6 +11,7 @@ from ml_forecast import generate_ml_forecast
 from telegram_utils import send_telegram_report
 from advanced_backtest import run_advanced_backtest
 from support_resistance import calculate_best_zones
+from alerts import check_hybrid_alerts
 import portfolio as pf
 import plotly.express as px
 from kap_news import render_kap_news_panel, get_sentiment_summary
@@ -869,9 +870,7 @@ def main():
                 
                 # --- OTONOM HİBRİT ALARM (V5) KONTROLÜ ---
                 try:
-                    from alerts import check_hybrid_alerts
-                    from kap_news import get_sentiment_summary
-                    from indicators import generate_signals_and_score, get_market_regime
+                    # Global kütüphaneler kullanılacak
                     xu100_temp = fetch_data("XU100", "1d", "1mo")
                     regime_temp = get_market_regime(xu100_temp)
                     sent_val, _ = get_sentiment_summary(sym)
