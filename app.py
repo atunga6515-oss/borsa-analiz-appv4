@@ -745,6 +745,10 @@ def main():
                         elif col == 'Güven Skoru (PGS)':
                             if val < 50: styles[i] = 'color: #ff4c4c; font-weight: bold'
                             elif val >= 80: styles[i] = 'color: #00ff00; font-weight: bold'
+                        elif col == 'Graham Potansiyeli (%)':
+                            if pd.notna(val) and float(val) > 30.0: styles[i] = 'background-color: #0b5345; color: #00ff00; font-weight: bold;'
+                            elif pd.notna(val) and float(val) > 0.0: styles[i] = 'color: #00ff00;'
+                            elif pd.notna(val) and float(val) < 0.0: styles[i] = 'color: #ff4c4c;'
                         elif col == 'Değişim (%)':
                             if isinstance(val, (int, float)):
                                 if val > 0: styles[i] = 'color: #00ff00; font-weight: bold'

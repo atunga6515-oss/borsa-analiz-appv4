@@ -357,12 +357,20 @@ def _analyze_single_stock(sym: str, market_regime: dict = None) -> dict:
         
         # V6 HİBRİT SKOR: %60 Teknik, %40 Temel
         v6_hybrid_score = round((tek_skor * 0.6) + (tem_skor * 0.4), 1)
+        
+        # Graham Güvenlik Marjı / Potansiyel (%)
+        g_val = fund_data.get('graham_value', 0.0)
+        g_pot = 0.0
+        if g_val > 0 and display_price > 0:
+            g_pot = round(((g_val - display_price) / display_price) * 100, 1)
 
         return {
             "Hisse": sym,
             "Fiyat": round(display_price, 2),
             "Değişim (%)": round(pct_change, 2),
             "V6 Hibrit Skor": v6_hybrid_score,
+            "Adil Değer (Graham)": g_val,
+            "Graham Potansiyeli (%)": g_pot,
             "Teknik Potansiyel": tek_skor,
             "Temel Not": tem_skor,
             "PD/DD": fund_data.get('pb', 0),
