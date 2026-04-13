@@ -755,10 +755,42 @@ def main():
                     return styles
                 
                 st.success(f"Toplam {len(screener_df)} hisse listelendi.")
-                st.dataframe(screener_df.style.apply(style_all, axis=1).format(precision=2), use_container_width=True, height=600)
+                
+                # Checkbox kolonu ekle
+                if "Seç" not in screener_df.columns:
+                    screener_df.insert(0, "Seç", False)
+                
+                # Etkileşimli Tablo (Sadece 'Seç' kolonu değiştirilebilir)
+                edited_df = st.data_editor(
+                    screener_df.style.apply(style_all, axis=1).format(precision=2),
+                    column_config={
+                        "Seç": st.column_config.CheckboxColumn("Seç", default=False)
+                    },
+                    disabled=[col for col in screener_df.columns if col != "Seç"],
+                    hide_index=True,
+                    use_container_width=True,
+                    height=600,
+                    key="screener_editor"
+                )
+                
+                # Seçilen hisseleri filtrele
+                # Not: edited_df bir styler nesnesi değil DataFrame olarak döner.
+                selected_rows = edited_df[edited_df["Seç"] == True]
+                
+                if not selected_rows.empty:
+                    st.write(f"✅ {len(selected_rows)} hisse seçildi.")
+                    
+                    with st.expander("📥 Seçilenleri Portföye Ekle", expanded=True):
+                        adet = st.number_input("Varsayılan Adet", min_value=1.0, value=100.0)
+                        if st.button("Hepsini Ekle", type="primary"):
+                            for _, row in selected_rows.iterrows():
+                                ticker = row['Hisse']
+                                fiyat = float(row['Fiyat']) if 'Fiyat' in row else 1.0
+                                pf.alis_yap(current_user, ticker, adet, fiyat, not_text="Screener üzerinden eklendi.")
+                            st.success("Seçilen tüm hisseler portföyünüze eklendi!")
                 
                 # Özellik 3: CSV Export
-                csv_data = screener_df.to_csv(index=False).encode('utf-8-sig')
+                csv_data = screener_df.drop(columns=["Seç"]).to_csv(index=False).encode('utf-8-sig')
                 st.download_button("📥 Sonuçları CSV Olarak İndir", csv_data, "tarama_sonuclari.csv", "text/csv", use_container_width=True)
                 
                 # Özellik 5: Hızlı Grafik Önizleme
