@@ -637,6 +637,13 @@ def main():
 
         custom_min_score = st.sidebar.slider("Min. V6 Hibrit Skor", 0, 100, 0)
         
+        selected_fundamental_status = st.sidebar.multiselect(
+            "🏷️ Temel Durum Filtresi",
+            ["Kelepir 💎", "Emeklilik 🏖️", "Normal", "Balon ⚠️"],
+            default=["Kelepir 💎", "Emeklilik 🏖️", "Normal", "Balon ⚠️"],
+            help="Hisseleri temel analiz etiketlerine göre filtreleyin."
+        )
+        
         # Paralel iş parçacığı sayısı
         workers = st.sidebar.slider("⚡ Paralel İşçi Sayısı", 1, 10, 5)
         
@@ -681,6 +688,10 @@ def main():
             # Min skor filtresi
             if custom_min_score > 0:
                 screener_df = screener_df[screener_df['V6 Hibrit Skor'] >= custom_min_score]
+            
+            # Temel durum filtresi
+            if selected_fundamental_status:
+                screener_df = screener_df[screener_df['Temel Durum'].isin(selected_fundamental_status)]
             
             if screener_df.empty:
                 st.warning("Seçilen filtreye uyan hisse bulunamadı.")
@@ -871,6 +882,25 @@ def main():
                     st.rerun()
             else:
                 st.info("İzleme listeniz boş. Tarama sonuçlarından hisse ekleyebilirsiniz.")
+        
+        # ---- SCREENER TERİMLERİ SÖZLÜĞÜ (YENİ) ----
+        st.markdown("---")
+        with st.expander("📚 Screener Terimleri ve Anlamları", expanded=False):
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown("""
+                **💎 Kelepir:** PD/DD oranı 1.1'in, F/K 10'un altında olan, defter değerine yakın veya altında işlem gören çok ucuz hisseler.
+                **🏖️ Emeklilik:** Temettü verimi %5 ve üzeri olan, yatırımcısına düzenli nakit akışı sağlamayı hedefleyen köklü şirketler.
+                **🚀 Pozitif Trend (V6):** Hem teknik (indikatörler) hem temel verileri harmanlayan V6 skoru 65 ve üzeri olan yükseliş potansiyelli hisseler.
+                """)
+            with col2:
+                st.markdown("""
+                **⚠️ Balon:** F/K oranı 35'in veya PD/DD 10'un üzerine çıkmış, temellerinden çok uzaklaşmış, düzeltme riski yüksek hisseler.
+                **⚖️ V6 Hibrit Skor:** %60 Teknik Momentum ve %40 Temel Analiz verilerinin melez bir algoritma ile hesaplanmış final puanıdır.
+                **🛡️ Güven Skoru (PGS):** Sinyalin volatilitesi ve indikatör uyumuna göre hesaplanan tutarlılık puanıdır (Yüksek = Güvenli).
+                """)
+
+        st.warning("⚠️ **Yasal Uyarı:** Bu sonuçlar teknik ve istatistiksel analize dayanmaktadır. Kesinlikle yatırım tavsiyesi niteliği taşımaz.")
 
 
     elif mode == "🤖 Öngörüsel Model Analizi (Predictive Engine)":
