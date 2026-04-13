@@ -343,26 +343,41 @@ def _analyze_single_stock(sym: str, market_regime: dict = None) -> dict:
         rsi_val = df['RSI_14'].iloc[-1] if 'RSI_14' in df.columns else None
         sector = get_sector(sym)
 
+        # ==========================================
+        # V6 HİBRİT TEMEL ANALİZ (YENİ)
+        # ==========================================
+        try:
+            from fundamental_analyzer import get_fundamental_data
+            fund_data = get_fundamental_data(sym)
+        except Exception:
+            fund_data = {"pe": 0.0, "pb": 0.0, "div_yield": 0.0, "graham_value": 0.0, "fundamental_score": 50, "status": "Veri Yok"}
+            
+        tek_skor = sig['score']
+        tem_skor = fund_data['fundamental_score']
+        
+        # V6 HİBRİT SKOR: %60 Teknik, %40 Temel
+        v6_hybrid_score = round((tek_skor * 0.6) + (tem_skor * 0.4), 1)
+
         return {
             "Hisse": sym,
             "Fiyat": round(display_price, 2),
             "Değişim (%)": round(pct_change, 2),
-            "Yükseliş Potansiyeli Skoru": sig['score'],
+            "V6 Hibrit Skor": v6_hybrid_score,
+            "Teknik Potansiyel": tek_skor,
+            "Temel Not": tem_skor,
+            "PD/DD": fund_data.get('pb', 0),
+            "F/K": fund_data.get('pe', 0),
+            "Temettü (%)": fund_data.get('div_yield', 0),
+            "Temel Durum": fund_data.get('status', 'Normal'),
+            "Piyasa Kararı": sig['decision'],
             "Güven Skoru (PGS)": sig['pgs'],
-            "Güven Seviyesi": sig.get('conviction_level', 'ORTA ⚖️'),
-            "Karar": sig['decision'],
             "ADX": adx_text,
-            "Trend Onayı": ema200_status,
             "1D+1H Uyum": trend_uyum,
             "Hacim Skoru": vol_text,
-            "Zirve Uzaklığı": f"%{round(dist_from_high, 2)}",
-            "Uyumsuzluk": div_text,
-            "Dipten Dönüş": reversal,
-            "Mum Formasyonu": pattern_text,
             "RSI": round(rsi_val, 1) if rsi_val and pd.notna(rsi_val) else "-",
             "Desteğe Uzaklık": dist_sup,
-            "Dirence Uzaklık": dist_res,
-            "Risk Notu": "⚠️ Yüksek Volatilite" if sig['pgs'] < 50 else "✅ Güvenli"
+            "Dirence Uzaklık": dist_res
+
         }
     except Exception:
         return None

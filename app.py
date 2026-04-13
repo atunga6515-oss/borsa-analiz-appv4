@@ -707,7 +707,7 @@ def main():
                 st.markdown("---")
                 k1, k2, k3 = st.columns(3)
                 top_score = screener_df.iloc[0]
-                k1.metric("🥇 Momentum Lideri", f"{top_score['Hisse']}", f"Alfas: {top_score['Yükseliş Potansiyeli Skoru']}")
+                k1.metric("🥇 V6 Lideri", f"{top_score['Hisse']}", f"V6 Skor: {top_score['V6 Hibrit Skor']}")
                 
                 if 'Değişim (%)' in screener_df.columns:
                     best_gainer = screener_df.loc[screener_df['Değişim (%)'].idxmax()]
@@ -722,15 +722,26 @@ def main():
                     styles = [''] * len(row)
                     for i, col in enumerate(screener_df.columns):
                         val = row[col]
-                        if col == 'Karar':
-                            if 'Lideri' in str(val): styles[i] = 'background-color: #2d6a2e; color: white; font-weight: bold'
-                            elif 'Trend' in str(val): styles[i] = 'background-color: #1a5276; color: white'
+                        if col == 'Piyasa Kararı':
+                            if 'Lideri' in str(val) or 'Güçlü Al' in str(val): styles[i] = 'background-color: #2d6a2e; color: white; font-weight: bold'
+                            elif 'Trend' in str(val) or 'Al' in str(val): styles[i] = 'background-color: #1a5276; color: white'
                             elif 'Doygunluk' in str(val): styles[i] = 'background-color: #b7950b; color: black; font-weight: bold'
-                            elif 'Freni' in str(val): styles[i] = 'background-color: #641e16; color: white; font-weight: bold'
+                            elif 'Freni' in str(val) or 'Güçlü Sat' in str(val): styles[i] = 'background-color: #641e16; color: white; font-weight: bold'
                             elif 'Potansiyeli' in str(val): styles[i] = 'background-color: #d35400; color: white; font-weight: bold'
-                            elif 'Baskı' in str(val): styles[i] = 'background-color: #b03a2e; color: white'
-                        elif col == 'Yükseliş Potansiyeli Skoru':
+                            elif 'Baskı' in str(val) or 'Sat' in str(val): styles[i] = 'background-color: #b03a2e; color: white'
+                        elif col == 'V6 Hibrit Skor':
                             if val >= 70: styles[i] = 'color: #00ff00; font-weight: bold'
+                            elif val < 40: styles[i] = 'color: #ff4c4c; font-weight: bold'
+                        elif col == 'Temel Durum':
+                            if 'Kelepir' in str(val): styles[i] = 'background-color: #0d5f30; color: white; font-weight: bold;'
+                            elif 'Balon' in str(val): styles[i] = 'background-color: #8c1010; color: white; font-weight: bold;'
+                            elif 'Emeklilik' in str(val): styles[i] = 'background-color: #1a5286; color: white; font-weight: bold;'
+                        elif col == 'PD/DD':
+                            if pd.notna(val) and float(val) > 0 and float(val) < 1.0: styles[i] = 'color: #00ff00;'
+                            elif pd.notna(val) and float(val) > 10.0: styles[i] = 'color: #ff4c4c;'
+                        elif col == 'F/K':
+                            if pd.notna(val) and float(val) > 0 and float(val) < 10.0: styles[i] = 'color: #00ff00;'
+                            elif pd.notna(val) and float(val) > 35.0: styles[i] = 'color: #ff4c4c;'
                         elif col == 'Güven Skoru (PGS)':
                             if val < 50: styles[i] = 'color: #ff4c4c; font-weight: bold'
                             elif val >= 80: styles[i] = 'color: #00ff00; font-weight: bold'
