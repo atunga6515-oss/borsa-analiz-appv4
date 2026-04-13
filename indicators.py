@@ -179,6 +179,7 @@ def get_market_regime(xu100_df: pd.DataFrame) -> dict:
     ema200 = last.get('EMA_200', 0)
     
     is_bear = last['Close'] < ema50
+    mode = "⚖️ TESTEREYE PİYASASI" # Default fallback
     
     if daily_chg < -2.0:
         mode = "🛑 KRİTİK AYI (Sert Satış)"
