@@ -382,6 +382,7 @@ def main():
         "💼 Gelişmiş Backtest",
         "📈 Sanal Portföy",
         "📰 KAP ve Haberler",
+        "🌟 Haber Alpha (Alpha Discovery)",
         "🏆 Stratejik Seçki (Top Picks)",
         "🔒 Profil ve Güvenlik"
     ])
@@ -1346,6 +1347,69 @@ def main():
             
             st.markdown("---")
             st.warning("⚠️ **Yasal Uyarı:** Bu sonuçlar teknik ve istatistiksel analize dayanmaktadır. Kesinlikle yatırım tavsiyesi niteliği taşımaz.")
+
+    elif mode == "🌟 Haber Alpha (Alpha Discovery)":
+        st.title("🌟 Haber Alpha (Alpha Discovery)")
+        st.markdown("""
+        Bu VIP modül, teknik analizin ötesine geçerek piyasadaki **Haber-Fiyat Uyuşmazlıkları**nı tespit eder.
+        Investing.com Türkiye haber ağını saniyeler içinde tarar, pozitif ayrışma emareleri gösteren şirketlerin son haberlerini **Gemini 3.1 Pro (Flash)** yapay zekasına sokarak şunları denetler:
+        - 🧩 **Haberin Niteliği** (Stratejik birleşme mi, olağan bir duyuru mu?)
+        - ⏳ **Etki Vadesi** (Kaç gün veya hafta fiyata yön verir?)
+        - 💎 **Potansiyel Alpha Skoru** (KAP düşmesine rağmen fiyat henüz hareketlenmemişse fırsat skoru artar)
+        """)
+        
+        st.info("💡 Sistem anlık olarak ulusal borsa haber akışlarına (RSS) canlı bağlanıp binlerce veri setini paralel analiz eder (Çalışması ortalama 30-60 SN sürebilir).")
+        
+        if st.button("🚀 Alpha Avını Başlat", type="primary"):
+            from news_alpha_analyzer import run_alpha_discovery_pipeline
+            p_bar = st.progress(0, text="Haber akışları toplanıyor...")
+            alpha_res_df = run_alpha_discovery_pipeline(progress_bar=p_bar)
+            p_bar.empty()
+            
+            if not alpha_res_df.empty:
+                st.success(f"Taramalar tamamlandı! Keşfedilen potansiyel Alpha hisse sayısı: {len(alpha_res_df)}")
+                
+                # Checkbox mantığı
+                alpha_res_df.insert(0, "Seç", False)
+                
+                def style_alpha(row):
+                    styles = [''] * len(row)
+                    for i, col in enumerate(alpha_res_df.columns):
+                        val = row[col]
+                        if col == 'Önem Skoru':
+                            if val >= 80: styles[i] = 'background-color: #2d6a2e; color: white; font-weight: bold'
+                            elif val >= 60: styles[i] = 'background-color: #b7950b; color: black; font-weight: bold'
+                        elif col == 'AI Tahmini':
+                            if str(val).upper() == 'EVET': styles[i] = 'color: #00ff00; font-weight: bold'
+                            elif str(val).upper() == 'HAYIR': styles[i] = 'color: #ff4c4c; font-weight: bold'
+                    return styles
+                
+                edited_alpha = st.data_editor(
+                    alpha_res_df.style.apply(style_alpha, axis=1),
+                    column_config={
+                        "Seç": st.column_config.CheckboxColumn("Seç", default=False),
+                        "Önem Skoru": st.column_config.ProgressColumn("Alpha Skoru", format="%d", min_value=0, max_value=100)
+                    },
+                    disabled=[col for col in alpha_res_df.columns if col != "Seç"],
+                    hide_index=True,
+                    use_container_width=True,
+                    key="alpha_editor"
+                )
+                
+                selected_alphas = edited_alpha[edited_alpha["Seç"] == True]
+                if not selected_alphas.empty:
+                    st.write(f"✅ {len(selected_alphas)} Alpha listeye alındı.")
+                    with st.expander("📥 Seçilenleri Portföye Ekle", expanded=True):
+                        adet = st.number_input("Varsayılan Adet", min_value=1.0, value=100.0, key="alpha_adet")
+                        if st.button("🌟 Listeyi Toplu Ekle", type="primary", key="alpha_ekle"):
+                            for _, row in selected_alphas.iterrows():
+                                ticker = row['Sembol']
+                                current_px = get_live_price(ticker)
+                                pf.alis_yap(current_user, ticker, adet, current_px, not_text="Alpha Discovery üzerinden eklendi.")
+                            st.success("Seçilen Alpha adayları Sanal Portföyünüze dinamik korumalarıyla birlikte (SL/TP) eklendi!")
+            else:
+                st.warning("Şu anki piyasa koşullarında net bir fiyat-haber (Alpha) ayrıcalığı bulunamadı.")
+                
 
     elif mode == "🔒 Profil ve Güvenlik":
         st.title("🔒 Profil ve Güvenlik")
