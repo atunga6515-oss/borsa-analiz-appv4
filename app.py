@@ -1597,6 +1597,7 @@ def main():
                 st.table(stats['history'])
             else:
                 st.info("Henüz kayıtlı işlem bulunmuyor.")
+    elif mode == "🔒 Profil ve Güvenlik":
         st.title("🔒 Profil ve Güvenlik")
         st.write(f"Mevcut Kullanıcı: **{current_user}**")
         
