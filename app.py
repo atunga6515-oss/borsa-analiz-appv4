@@ -392,6 +392,19 @@ def render_login_page():
             </div>
         """, unsafe_allow_html=True)
 
+        with st.form("auth_form_final"):
+            u_input = st.text_input("Kullanıcı Adı", placeholder="user")
+            p_input = st.text_input("Giriş Şifresi", type="password", placeholder="••••••••")
+            submitted = st.form_submit_button("Sisteme Giriş Yap", type="primary", width='stretch')
+            
+            if submitted:
+                if auth.verify_login(u_input, p_input):
+                    st.session_state.logged_in = True
+                    st.session_state.username = u_input
+                    st.rerun()
+                else:
+                    st.error("🔑 Hatalı Giriş Bilgileri")
+
         # Market Grid İnşası
         grid_html = ""
         for lbl, data in market_data.items():
@@ -407,20 +420,6 @@ def render_login_page():
             grid_html += f'<div class="m-card-grid {c_class}"><div class="m-lbl">{lbl}</div><div class="m-val {v_class}">{arrow} {fmt}</div></div>'
         
         st.markdown(f'<div class="market-grid">{grid_html}</div>', unsafe_allow_html=True)
-
-        with st.form("auth_form_final"):
-            u_input = st.text_input("Kullanıcı Adı", placeholder="user")
-            p_input = st.text_input("Giriş Şifresi", type="password", placeholder="••••••••")
-            submitted = st.form_submit_button("Sisteme Giriş Yap", type="primary", width='stretch')
-            
-            if submitted:
-                if auth.verify_login(u_input, p_input):
-                    st.session_state.logged_in = True
-                    st.session_state.username = u_input
-                    st.rerun()
-                else:
-                    st.error("🔑 Hatalı Giriş Bilgileri")
-                    
         st.markdown('</div>', unsafe_allow_html=True)
 
 
