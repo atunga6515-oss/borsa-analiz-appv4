@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import yfinance as yf
 import requests
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from data_loader import fetch_data, get_db_stats, clear_db, get_ticker_db_info, get_live_price
 from indicators import calculate_indicators, generate_signals_and_score, get_market_regime
@@ -206,24 +207,31 @@ def render_login_page():
         
         def fetch_single(label, sym_list):
             session = _get_yf_session()
-            try:
-                # yfinance bazen period="5d" ile veri bulamazsa "delisted" hatası veriyor. 
-                # "1mo" (1 ay) kullanarak daha güvenli veri çekiyoruz.
-                for sym in sym_list:
-                    d = yf.download(sym, period="1mo", interval="1d", progress=False, auto_adjust=False, repair=True, session=session)
-                    if not d.empty:
-                        # MultiIndex temizliği
-                        if isinstance(d.columns, pd.MultiIndex):
-                            d.columns = d.columns.droplevel(1) if sym in d.columns.get_level_values(1) else d.columns.droplevel(0)
-                        
-                        ticker_data = d.dropna(subset=['Close'])
-                        if not ticker_data.empty:
-                            px = float(ticker_data['Close'].iloc[-1])
-                            prev_px = float(ticker_data['Close'].iloc[-2]) if len(ticker_data) >= 2 else px
-                            return label, {"val": px, "chg": px - prev_px}
-                return label, {"val": 0, "chg": 0}
-            except:
-                return label, {"val": 0, "chg": 0}
+            for attempt in range(2): # 2 deneme hakkı
+                try:
+                    # yfinance bazen period="5d" ile veri bulamazsa "delisted" hatası veriyor. 
+                    # "1mo" (1 ay) kullanarak daha güvenli veri çekiyoruz.
+                    for sym in sym_list:
+                        # threads=False bot tespitini zorlaştırır
+                        d = yf.download(sym, period="1mo", interval="1d", progress=False, 
+                                        auto_adjust=False, repair=True, session=session, threads=False)
+                        if not d.empty:
+                            # MultiIndex temizliği
+                            if isinstance(d.columns, pd.MultiIndex):
+                                d.columns = d.columns.droplevel(1) if sym in d.columns.get_level_values(1) else d.columns.droplevel(0)
+                            
+                            ticker_data = d.dropna(subset=['Close'])
+                            if not ticker_data.empty:
+                                px = float(ticker_data['Close'].iloc[-1])
+                                prev_px = float(ticker_data['Close'].iloc[-2]) if len(ticker_data) >= 2 else px
+                                return label, {"val": px, "chg": px - prev_px}
+                    
+                    # Eğer tüm semboller başarısız olduysa 1 saniye bekle ve tekrar dene
+                    time.sleep(1)
+                except Exception:
+                    time.sleep(1)
+                    continue
+            return label, {"val": 0, "chg": 0}
 
         # Paralel İşlemi Başlat
         res = {label: {"val": 0, "chg": 0} for label in symbols_map}

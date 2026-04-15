@@ -3,6 +3,7 @@ import pandas as pd
 import sqlite3
 import os
 import requests
+import time
 from datetime import datetime, timedelta
 import streamlit as st
 
@@ -113,33 +114,41 @@ def _get_last_date_in_db(ticker: str, interval: str) -> str:
 
 
 def _download_from_yfinance(ticker: str, interval: str, start: str = None, period: str = None) -> pd.DataFrame:
-    """yfinance'ten veri indirir. Başarısız olursa boş DataFrame döner."""
+    """yfinance'ten veri indirir. Başarısız olursa 1 sn bekleyip tekrar dener."""
     session = _get_yf_session()
-    try:
-        if start:
-            data = yf.download(ticker, start=start, interval=interval,
-                               group_by="ticker", progress=False,
-                               auto_adjust=False, repair=True, session=session)
-        else:
-            data = yf.download(ticker, period=period or "90d", interval=interval,
-                               group_by="ticker", progress=False,
-                               auto_adjust=False, repair=True, session=session)
-
-        if isinstance(data.columns, pd.MultiIndex):
-            if ticker in data.columns.get_level_values(1):
-                data = data.xs(ticker, axis=1, level=1)
-            elif ticker in data.columns.get_level_values(0):
-                data = data.xs(ticker, axis=1, level=0)
+    for attempt in range(2): # 2 deneme hakkı
+        try:
+            if start:
+                data = yf.download(ticker, start=start, interval=interval,
+                                   group_by="ticker", progress=False,
+                                   auto_adjust=False, repair=True, 
+                                   session=session, threads=False) # threads=False bot tespitini zorlaştırır
             else:
-                data.columns = data.columns.droplevel(1)
+                data = yf.download(ticker, period=period or "90d", interval=interval,
+                                   group_by="ticker", progress=False,
+                                   auto_adjust=False, repair=True, 
+                                   session=session, threads=False)
 
-        if data.empty:
-            return pd.DataFrame()
-        data.ffill(inplace=True)
-        data.dropna(inplace=True)
-        return data
-    except Exception:
-        return pd.DataFrame()
+            if isinstance(data.columns, pd.MultiIndex):
+                if ticker in data.columns.get_level_values(1):
+                    data = data.xs(ticker, axis=1, level=1)
+                elif ticker in data.columns.get_level_values(0):
+                    data = data.xs(ticker, axis=1, level=0)
+                else:
+                    data.columns = data.columns.droplevel(1)
+
+            if not data.empty:
+                data.ffill(inplace=True)
+                data.dropna(inplace=True)
+                return data
+                
+            # Boş döndüyse (delisted hatası vb) 1 sn bekle ve tekrar dene
+            time.sleep(1)
+        except Exception:
+            if attempt == 0:
+                time.sleep(1)
+            continue
+    return pd.DataFrame()
 
 
 # ============================================================
@@ -273,12 +282,21 @@ def auto_cleanup_db(days: int = 30):
     except Exception:
         pass
 
-def get_live_price(symbol: str) -> float:
-    """Veritabanını (Cache) tamamen pas geçip, yfinance üzerinden anlık en son fiyatı çeker."""
     ticker = _make_ticker(symbol)
     session = _get_yf_session()
+    def _safe_get(p, iv):
+        for _ in range(2):
+            try:
+                d = yf.download(ticker, period=p, interval=iv, progress=False, 
+                                group_by="ticker", auto_adjust=False, repair=True, 
+                                session=session, threads=False)
+                if not d.empty: return d
+                time.sleep(0.5)
+            except: time.sleep(0.5)
+        return pd.DataFrame()
+
     try:
-        data = yf.download(ticker, period="1d", interval="1m", progress=False, group_by="ticker", auto_adjust=False, repair=True, session=session)
+        data = _safe_get("1d", "1m")
         if isinstance(data.columns, pd.MultiIndex):
             if ticker in data.columns.get_level_values(1):
                 data = data.xs(ticker, axis=1, level=1)
@@ -291,7 +309,7 @@ def get_live_price(symbol: str) -> float:
             return float(data['Close'].iloc[-1])
             
         # 1 dakikalık veri bulunamadıysa günlük veriden en son fiyatı çekmeyi dene
-        data = yf.download(ticker, period="5d", interval="1d", progress=False, group_by="ticker", auto_adjust=False, repair=True, session=session)
+        data = _safe_get("5d", "1d")
         if isinstance(data.columns, pd.MultiIndex):
             if ticker in data.columns.get_level_values(1):
                 data = data.xs(ticker, axis=1, level=1)
