@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import yfinance as yf
+import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from data_loader import fetch_data, get_db_stats, clear_db, get_ticker_db_info, get_live_price
 from indicators import calculate_indicators, generate_signals_and_score, get_market_regime
@@ -180,6 +181,14 @@ def render_login_page():
     """Modern Finans Terminali konseptli Glassmorphism Giriş Sayfası (Kusursuz Hizalanmış ve Düzeltilmiş)"""
     from data_loader import get_live_price_with_change
     
+    def _get_yf_session():
+        """Yahoo Finance için tarayıcı gibi davranan bir session oluşturur."""
+        session = requests.Session()
+        session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        })
+        return session
+
     @st.cache_data(ttl=60)
     def fetch_market_snapshot():
         # Ana semboller ve alternatif (fallback) sembolleri tanımlayalım
@@ -196,11 +205,12 @@ def render_login_page():
         }
         
         def fetch_single(label, sym_list):
+            session = _get_yf_session()
             try:
                 # yfinance bazen period="5d" ile veri bulamazsa "delisted" hatası veriyor. 
                 # "1mo" (1 ay) kullanarak daha güvenli veri çekiyoruz.
                 for sym in sym_list:
-                    d = yf.download(sym, period="1mo", interval="1d", progress=False, auto_adjust=False, repair=True)
+                    d = yf.download(sym, period="1mo", interval="1d", progress=False, auto_adjust=False, repair=True, session=session)
                     if not d.empty:
                         # MultiIndex temizliği
                         if isinstance(d.columns, pd.MultiIndex):

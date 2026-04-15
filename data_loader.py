@@ -2,6 +2,7 @@ import yfinance as yf
 import pandas as pd
 import sqlite3
 import os
+import requests
 from datetime import datetime, timedelta
 import streamlit as st
 
@@ -31,6 +32,18 @@ def _get_connection():
     """)
     conn.commit()
     return conn
+
+def _get_yf_session():
+    """Yahoo Finance için tarayıcı gibi davranan bir session oluşturur."""
+    session = requests.Session()
+    session.headers.update({
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Origin': 'https://finance.yahoo.com',
+        'Referer': 'https://finance.yahoo.com/'
+    })
+    return session
 
 
 def _make_ticker(symbol: str) -> str:
@@ -101,15 +114,16 @@ def _get_last_date_in_db(ticker: str, interval: str) -> str:
 
 def _download_from_yfinance(ticker: str, interval: str, start: str = None, period: str = None) -> pd.DataFrame:
     """yfinance'ten veri indirir. Başarısız olursa boş DataFrame döner."""
+    session = _get_yf_session()
     try:
         if start:
             data = yf.download(ticker, start=start, interval=interval,
                                group_by="ticker", progress=False,
-                               auto_adjust=False, repair=True)
+                               auto_adjust=False, repair=True, session=session)
         else:
             data = yf.download(ticker, period=period or "90d", interval=interval,
                                group_by="ticker", progress=False,
-                               auto_adjust=False, repair=True)
+                               auto_adjust=False, repair=True, session=session)
 
         if isinstance(data.columns, pd.MultiIndex):
             if ticker in data.columns.get_level_values(1):
@@ -262,8 +276,9 @@ def auto_cleanup_db(days: int = 30):
 def get_live_price(symbol: str) -> float:
     """Veritabanını (Cache) tamamen pas geçip, yfinance üzerinden anlık en son fiyatı çeker."""
     ticker = _make_ticker(symbol)
+    session = _get_yf_session()
     try:
-        data = yf.download(ticker, period="1d", interval="1m", progress=False, group_by="ticker", auto_adjust=False, repair=True)
+        data = yf.download(ticker, period="1d", interval="1m", progress=False, group_by="ticker", auto_adjust=False, repair=True, session=session)
         if isinstance(data.columns, pd.MultiIndex):
             if ticker in data.columns.get_level_values(1):
                 data = data.xs(ticker, axis=1, level=1)
@@ -276,7 +291,7 @@ def get_live_price(symbol: str) -> float:
             return float(data['Close'].iloc[-1])
             
         # 1 dakikalık veri bulunamadıysa günlük veriden en son fiyatı çekmeyi dene
-        data = yf.download(ticker, period="5d", interval="1d", progress=False, group_by="ticker", auto_adjust=False, repair=True)
+        data = yf.download(ticker, period="5d", interval="1d", progress=False, group_by="ticker", auto_adjust=False, repair=True, session=session)
         if isinstance(data.columns, pd.MultiIndex):
             if ticker in data.columns.get_level_values(1):
                 data = data.xs(ticker, axis=1, level=1)
@@ -294,8 +309,9 @@ def get_live_price(symbol: str) -> float:
 def get_live_price_with_change(symbol: str) -> tuple:
     """Anlık fiyatı ve dünkü kapanışa göre değişim miktarını döndürür. (Fiyat, Değişim)"""
     ticker = _make_ticker(symbol)
+    session = _get_yf_session()
     try:
-        data = yf.download(ticker, period="5d", interval="1d", progress=False, group_by="ticker", auto_adjust=False, repair=True)
+        data = yf.download(ticker, period="5d", interval="1d", progress=False, group_by="ticker", auto_adjust=False, repair=True, session=session)
         if isinstance(data.columns, pd.MultiIndex):
             if ticker in data.columns.get_level_values(1):
                 data = data.xs(ticker, axis=1, level=1)
