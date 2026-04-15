@@ -180,44 +180,54 @@ def render_login_page():
     
     @st.cache_data(ttl=60)
     def fetch_market_snapshot():
-        symbols = {
+        symbols_map = {
             "BIST 100": "XU100.IS", "BIST 30": "XU030.IS", 
             "USD/TRY": "USDTRY=X", "EUR/TRY": "EURTRY=X",
             "BTC/USD": "BTC-USD", "ETH/USD": "ETH-USD",
             "Altın Ons": "GC=F", "Gümüş Ons": "SI=F",
             "Brent Petrol": "BZ=F"
         }
-        res = {}
-        for label, sym in symbols.items():
-            try:
-                px, chg = get_live_price_with_change(sym)
-                res[label] = {"val": px, "chg": chg}
-            except: 
-                res[label] = {"val": 0, "chg": 0}
-        
-        usd = res.get("USD/TRY", {}).get("val", 0)
-        usd_chg = res.get("USD/TRY", {}).get("chg", 0)
-        
-        if usd > 0:
-            if res.get("Altın Ons", {}).get("val", 0) > 0:
-                ons_val = res["Altın Ons"]["val"]
-                ons_chg = res["Altın Ons"]["chg"]
-                # Basit değişim hesabı: Yeni gram - Eski gram
-                eski_ons = ons_val - ons_chg
-                eski_usd = usd - usd_chg
-                yeni_gram = (ons_val / 31.1035) * usd
-                eski_gram = (eski_ons / 31.1035) * eski_usd
-                res["Altın Gram"] = {"val": yeni_gram, "chg": yeni_gram - eski_gram}
-                
-            if res.get("Gümüş Ons", {}).get("val", 0) > 0:
-                ons_val = res["Gümüş Ons"]["val"]
-                ons_chg = res["Gümüş Ons"]["chg"]
-                eski_ons = ons_val - ons_chg
-                eski_usd = usd - usd_chg
-                yeni_gram = (ons_val / 31.1035) * usd
-                eski_gram = (eski_ons / 31.1035) * eski_usd
-                res["Gümüş Gram"] = {"val": yeni_gram, "chg": yeni_gram - eski_gram}
-        return res
+        sym_list = list(symbols_map.values())
+        try:
+            # Batch download (toplu çekim) sequential indirmeye göre çok daha hızlıdır
+            data = yf.download(sym_list, period="5d", interval="1d", progress=False, group_by='ticker', auto_adjust=False, repair=True)
+            res = {}
+            for label, sym in symbols_map.items():
+                if isinstance(data.columns, pd.MultiIndex):
+                    if sym in data.columns.get_level_values(0):
+                        ticker_data = data[sym].dropna(subset=['Close'])
+                        if len(ticker_data) >= 2:
+                            px = float(ticker_data['Close'].iloc[-1])
+                            prev_px = float(ticker_data['Close'].iloc[-2])
+                            res[label] = {"val": px, "chg": px - prev_px}
+                        elif not ticker_data.empty:
+                            res[label] = {"val": float(ticker_data['Close'].iloc[-1]), "chg": 0.0}
+                        else:
+                            res[label] = {"val": 0, "chg": 0}
+                    else:
+                        res[label] = {"val": 0, "chg": 0}
+                else:
+                    if not data.empty and 'Close' in data.columns:
+                        px = float(data['Close'].iloc[-1])
+                        prev_px = float(data['Close'].iloc[-2]) if len(data) >= 2 else px
+                        res[label] = {"val": px, "chg": px - prev_px}
+                    else:
+                        res[label] = {"val": 0, "chg": 0}
+            
+            # Altın/Gümüş Gram hesaplaması
+            usd = res.get("USD/TRY", {}).get("val", 0)
+            usd_chg = res.get("USD/TRY", {}).get("chg", 0)
+            if usd > 0:
+                for metal in ["Altın Ons", "Gümüş Ons"]:
+                    if res.get(metal, {}).get("val", 0) > 0:
+                        ons_val = res[metal]["val"]
+                        ons_chg = res[metal]["chg"]
+                        yeni_gram = (ons_val / 31.1035) * usd
+                        eski_gram = ((ons_val - ons_chg) / 31.1035) * (usd - usd_chg)
+                        res[metal.replace("Ons", "Gram")] = {"val": yeni_gram, "chg": yeni_gram - eski_gram}
+            return res
+        except Exception:
+            return {label: {"val": 0, "chg": 0} for label in symbols_map.keys()}
 
     market_data = fetch_market_snapshot()
 
@@ -327,7 +337,7 @@ def render_login_page():
         with st.form("auth_form_final"):
             u_input = st.text_input("Kullanıcı Adı", placeholder="user")
             p_input = st.text_input("Giriş Şifresi", type="password", placeholder="••••••••")
-            submitted = st.form_submit_button("Sisteme Giriş Yap", type="primary", use_container_width=True)
+            submitted = st.form_submit_button("Sisteme Giriş Yap", type="primary", width='stretch')
             
             if submitted:
                 if auth.verify_login(u_input, p_input):
@@ -511,7 +521,7 @@ def main():
 
                 # --- TELEGRAM RAPORLAMA ---
                 st.write("---")
-                if st.button("📤 Analizi Telegram'a Gönder", use_container_width=True):
+                if st.button("📤 Analizi Telegram'a Gönder", width='stretch'):
                     with st.spinner("🚀 Rapor hazırlanıyor ve gönderiliyor..."):
                         # Rapor Metni Hazırla
                         ml_target = ml_res['future_df']['Fiyat Tahmini'].iloc[-1] if 'ml_res' in locals() and 'future_df' in ml_res else "N/A"
@@ -581,7 +591,7 @@ def main():
 
             with c2:
                 fig = create_advanced_chart(df, sym.upper(), res['risk'], sr_data, sent_score)
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
 
     elif mode == "🔍 Piyasa Tarama Terminali (Screener)":
         st.title("🔍 Piyasa Tarama Terminali (Screener)")
@@ -715,7 +725,7 @@ def main():
                 )
                 fig_matrix.add_hline(y=50, line_dash="dash", line_color="gray", annotation_text="Güven Sınırı")
                 fig_matrix.add_vline(x=70, line_dash="dash", line_color="gray", annotation_text="Potansiyel Sınırı")
-                st.plotly_chart(fig_matrix, use_container_width=True)
+                st.plotly_chart(fig_matrix, width='stretch')
                 # Özellik 6: Günün Yıldızı Kartları
                 st.markdown("---")
                 k1, k2, k3 = st.columns(3)
@@ -804,7 +814,7 @@ def main():
                     },
                     disabled=[col for col in screener_df.columns if col != "Seç"],
                     hide_index=True,
-                    use_container_width=True,
+                    width='stretch',
                     height=600,
                     key="screener_editor"
                 )
@@ -827,7 +837,7 @@ def main():
                 
                 # Özellik 3: CSV Export
                 csv_data = screener_df.drop(columns=["Seç"]).to_csv(index=False).encode('utf-8-sig')
-                st.download_button("📥 Sonuçları CSV Olarak İndir", csv_data, "tarama_sonuclari.csv", "text/csv", use_container_width=True)
+                st.download_button("📥 Sonuçları CSV Olarak İndir", csv_data, "tarama_sonuclari.csv", "text/csv", width='stretch')
                 
                 # Özellik 5: Hızlı Grafik Önizleme
                 st.markdown("---")
@@ -846,7 +856,7 @@ def main():
                                 fig_q.add_trace(go.Scatter(x=qdf.index, y=qdf['SMA_50'], line=dict(color='cyan', width=1), name='SMA 50'))
                             fig_q.update_layout(template='plotly_dark', height=400, xaxis_rangeslider_visible=False,
                                                 title=f"{chart_sym} - Son 3 Ay Mum Grafiği")
-                            st.plotly_chart(fig_q, use_container_width=True)
+                            st.plotly_chart(fig_q, width='stretch')
                             
                             # RSI paneli
                             if 'RSI_14' in qdf.columns:
@@ -855,7 +865,7 @@ def main():
                                 fig_rsi.add_hline(y=70, line_dash="dash", line_color="red", annotation_text="Aşırı Alım")
                                 fig_rsi.add_hline(y=30, line_dash="dash", line_color="green", annotation_text="Aşırı Satım")
                                 fig_rsi.update_layout(template='plotly_dark', height=200, title="RSI (14)")
-                                st.plotly_chart(fig_rsi, use_container_width=True)
+                                st.plotly_chart(fig_rsi, width='stretch')
                 
                 # Özellik 8: Watchlist'e Ekleme
                 st.markdown("---")
@@ -875,7 +885,7 @@ def main():
             persistent_df = get_persistent_signals(current_user, min_days=2)
             if not persistent_df.empty:
                 st.write("**🔁 Ardışık Günlerde Aynı Yönde Sinyal Veren Hisseler:**")
-                st.dataframe(persistent_df.style.format(precision=2), use_container_width=True)
+                st.dataframe(persistent_df.style.format(precision=2), width='stretch')
             else:
                 st.info("Henüz birden fazla gün tarama geçmişi oluşmamış. Her gün tarama yaparak tutarlı sinyalleri burada göreceksiniz.")
         
@@ -883,7 +893,7 @@ def main():
         with st.expander("🔔 İzleme Listem (Watchlist)"):
             wl_df = get_watchlist(current_user)
             if not wl_df.empty:
-                st.dataframe(wl_df.style.format(precision=2), use_container_width=True)
+                st.dataframe(wl_df.style.format(precision=2), width='stretch')
                 wl_del = st.selectbox("Çıkarılacak Hisse:", wl_df['ticker'].tolist(), key="wl_del")
                 if st.button("🗑️ İzleme Listesinden Çıkar"):
                     remove_from_watchlist(current_user, wl_del)
@@ -943,7 +953,7 @@ def main():
                     c_ml1, c_ml2 = st.columns([3, 1])
                     with c_ml1:
                         fig_ml = create_ml_chart(df_long, ml_res, sym)
-                        st.plotly_chart(fig_ml, use_container_width=True)
+                        st.plotly_chart(fig_ml, width='stretch')
                     with c_ml2:
                         st.metric("Model Başarı Skoru (R²)", f"%{ml_res['confidence_score']}")
                         
@@ -991,7 +1001,7 @@ def main():
                 c3.metric("Maksimum Kayıp (Drawdown)", f"{res['max_drawdown_pct']:.2f}%", delta_color="inverse")
                 c4.metric("Al&Tut (Buy-Hold) Getirisi", f"{res['buy_and_hold_return_pct']:.2f}%")
                 
-                st.plotly_chart(create_equity_curve_chart(res['equity_curve'], sym.upper()), use_container_width=True)
+                st.plotly_chart(create_equity_curve_chart(res['equity_curve'], sym.upper()), width='stretch')
                 
                 with st.expander("Detaylı İşlem Dökümü (Trades)"):
                     if res['trades']:
@@ -1052,7 +1062,7 @@ def main():
         with c_hdr1:
             st.subheader("🏁 Açık Pozisyonlar")
         with c_hdr2:
-            if st.button("🔄 Canlı Fiyatları Yenile", use_container_width=True):
+            if st.button("🔄 Canlı Fiyatları Yenile", width='stretch'):
                 st.rerun()
 
         acik_df = pf.acik_pozisyonlar(current_user)
@@ -1109,7 +1119,7 @@ def main():
             except Exception:
                 styled_p_df = p_df # Hata durumunda stil olmadan göster
 
-            st.dataframe(styled_p_df.format(precision=2) if hasattr(styled_p_df, 'format') else styled_p_df, use_container_width=True)
+            st.dataframe(styled_p_df.format(precision=2) if hasattr(styled_p_df, 'format') else styled_p_df, width='stretch')
             
             # Toplam Durum
             toplam_maliyet = sum(d['Adet'] * d['Maliyet (₺)'] for d in p_data)
@@ -1129,7 +1139,7 @@ def main():
             with gc1:
                 st.subheader("🍕 Portföy Dağılımı")
                 fig_pie = px.pie(p_df, values='Adet', names='Hisse', title='Hisse Dağılımı (Adet Bazlı)', hole=0.4, template='plotly_dark')
-                st.plotly_chart(fig_pie, use_container_width=True)
+                st.plotly_chart(fig_pie, width='stretch')
             
             with gc2:
                 st.subheader("📊 Hisse Bazlı Kar/Zarar")
@@ -1138,7 +1148,7 @@ def main():
                                  title='Hisse Bazlı Kazanç Durumu', template='plotly_dark',
                                  color_continuous_scale=['red', 'yellow', 'green'],
                                  color_continuous_midpoint=0)
-                st.plotly_chart(fig_bar, use_container_width=True)
+                st.plotly_chart(fig_bar, width='stretch')
 
             # İşlem Kapatma
             st.markdown("---")
@@ -1158,7 +1168,7 @@ def main():
         st.subheader("📜 Geçmiş İşlemler")
         kapali_df = pf.kapali_pozisyonlar(current_user)
         if not kapali_df.empty:
-            st.dataframe(kapali_df.style.format(precision=2), use_container_width=True)
+            st.dataframe(kapali_df.style.format(precision=2), width='stretch')
             
             with st.expander("🗑️ Geçmiş İşlemi Veritabanından Sil"):
                 del_id = st.selectbox("Silinecek İşlem ID", kapali_df['id'].tolist(), key="del_kapali")
@@ -1288,7 +1298,7 @@ def main():
                 },
                 disabled=[col for col in sum_df.columns if col != "Seç"],
                 hide_index=True,
-                use_container_width=True,
+                width='stretch',
                 key="toppicks_editor"
             )
             
@@ -1305,7 +1315,7 @@ def main():
                         st.success("Seçilen hisseler portföyünüze eklendi!")
             
             # --- TELEGRAM TOP PICKS RAPORU ---
-            if st.button("📤 Haftalık Listeyi Telegram'a Gönder", use_container_width=True):
+            if st.button("📤 Haftalık Listeyi Telegram'a Gönder", width='stretch'):
                 with st.spinner("🚀 Haftalık rapor hazırlanıyor..."):
                     medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
                     report_lines = [f"🏆 *Haftalık Yükselme Potansiyeli En Yüksek {len(top_results)} Hisse* \n"]
@@ -1381,7 +1391,7 @@ def main():
                             f"+{pick['reversal_bonus']}"
                         ]
                     }
-                    st.dataframe(pd.DataFrame(comp_data), use_container_width=True, hide_index=True)
+                    st.dataframe(pd.DataFrame(comp_data), width='stretch', hide_index=True)
                     
                     st.markdown("---")
                     r1, r2, r3 = st.columns(3)
@@ -1421,7 +1431,7 @@ def main():
                             if 'SMA_50' in qdf.columns:
                                 fig.add_trace(go.Scatter(x=qdf.index, y=qdf['SMA_50'], line=dict(color='cyan', width=1), name='SMA 50'))
                             fig.update_layout(template='plotly_dark', height=350, xaxis_rangeslider_visible=False, title=f"{pick['ticker']} - Son 3 Ay")
-                            st.plotly_chart(fig, use_container_width=True)
+                            st.plotly_chart(fig, width='stretch')
             
             st.markdown("---")
             st.warning("⚠️ **Yasal Uyarı:** Bu sonuçlar teknik ve istatistiksel analize dayanmaktadır. Kesinlikle yatırım tavsiyesi niteliği taşımaz.")
@@ -1470,7 +1480,7 @@ def main():
                     },
                     disabled=[col for col in alpha_res_df.columns if col != "Seç"],
                     hide_index=True,
-                    use_container_width=True,
+                    width='stretch',
                     key="alpha_editor"
                 )
                 
@@ -1568,7 +1578,7 @@ def main():
                     "Seç": st.column_config.CheckboxColumn("Seç", default=False),
                     "Teknik Skor": st.column_config.ProgressColumn("Güç", format="%d", min_value=0, max_value=100)
                 },
-                use_container_width=True,
+                width='stretch',
                 hide_index=True,
                 key="discipline_editor"
             )
