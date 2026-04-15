@@ -1,5 +1,7 @@
 import streamlit as st
 import pandas as pd
+import yfinance as yf
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from data_loader import fetch_data, get_db_stats, clear_db, get_ticker_db_info, get_live_price
 from indicators import calculate_indicators, generate_signals_and_score, get_market_regime
 from visualizations import create_advanced_chart, create_ml_chart, create_equity_curve_chart
@@ -187,47 +189,49 @@ def render_login_page():
             "Altın Ons": "GC=F", "Gümüş Ons": "SI=F",
             "Brent Petrol": "BZ=F"
         }
-        sym_list = list(symbols_map.values())
-        try:
-            # Batch download (toplu çekim) sequential indirmeye göre çok daha hızlıdır
-            data = yf.download(sym_list, period="5d", interval="1d", progress=False, group_by='ticker', auto_adjust=False, repair=True)
-            res = {}
-            for label, sym in symbols_map.items():
-                if isinstance(data.columns, pd.MultiIndex):
-                    if sym in data.columns.get_level_values(0):
-                        ticker_data = data[sym].dropna(subset=['Close'])
-                        if len(ticker_data) >= 2:
-                            px = float(ticker_data['Close'].iloc[-1])
-                            prev_px = float(ticker_data['Close'].iloc[-2])
-                            res[label] = {"val": px, "chg": px - prev_px}
-                        elif not ticker_data.empty:
-                            res[label] = {"val": float(ticker_data['Close'].iloc[-1]), "chg": 0.0}
-                        else:
-                            res[label] = {"val": 0, "chg": 0}
-                    else:
-                        res[label] = {"val": 0, "chg": 0}
-                else:
-                    if not data.empty and 'Close' in data.columns:
-                        px = float(data['Close'].iloc[-1])
-                        prev_px = float(data['Close'].iloc[-2]) if len(data) >= 2 else px
-                        res[label] = {"val": px, "chg": px - prev_px}
-                    else:
-                        res[label] = {"val": 0, "chg": 0}
-            
-            # Altın/Gümüş Gram hesaplaması
-            usd = res.get("USD/TRY", {}).get("val", 0)
-            usd_chg = res.get("USD/TRY", {}).get("chg", 0)
-            if usd > 0:
-                for metal in ["Altın Ons", "Gümüş Ons"]:
-                    if res.get(metal, {}).get("val", 0) > 0:
-                        ons_val = res[metal]["val"]
-                        ons_chg = res[metal]["chg"]
-                        yeni_gram = (ons_val / 31.1035) * usd
-                        eski_gram = ((ons_val - ons_chg) / 31.1035) * (usd - usd_chg)
-                        res[metal.replace("Ons", "Gram")] = {"val": yeni_gram, "chg": yeni_gram - eski_gram}
-            return res
-        except Exception:
-            return {label: {"val": 0, "chg": 0} for label in symbols_map.keys()}
+        
+        def fetch_single(label, sym):
+            try:
+                # Paralel çekimde her biri bağımsızdır, timeout riskini azaltır
+                d = yf.download(sym, period="5d", interval="1d", progress=False, auto_adjust=False, repair=True)
+                if not d.empty:
+                    # MultiIndex kontrolü (tek sembolde genelde olmaz ama garantiye alalım)
+                    if isinstance(d.columns, pd.MultiIndex):
+                        d.columns = d.columns.droplevel(1) if sym in d.columns.get_level_values(1) else d.columns.droplevel(0)
+                    
+                    ticker_data = d.dropna(subset=['Close'])
+                    if not ticker_data.empty:
+                        px = float(ticker_data['Close'].iloc[-1])
+                        prev_px = float(ticker_data['Close'].iloc[-2]) if len(ticker_data) >= 2 else px
+                        return label, {"val": px, "chg": px - prev_px}
+                return label, {"val": 0, "chg": 0}
+            except:
+                return label, {"val": 0, "chg": 0}
+
+        # Paralel İşlemi Başlat
+        res = {label: {"val": 0, "chg": 0} for label in symbols_map}
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            future_to_label = {executor.submit(fetch_single, label, sym): label for label, sym in symbols_map.items()}
+            for future in as_completed(future_to_label):
+                label = future_to_label[future]
+                try:
+                    l, val_res = future.result()
+                    res[l] = val_res
+                except:
+                    pass
+
+        # Altın/Gümüş Gram hesaplaması
+        usd = res.get("USD/TRY", {}).get("val", 0)
+        usd_chg = res.get("USD/TRY", {}).get("chg", 0)
+        if usd > 0:
+            for metal in ["Altın Ons", "Gümüş Ons"]:
+                if res.get(metal, {}).get("val", 0) > 0:
+                    ons_val = res[metal]["val"]
+                    ons_chg = res[metal]["chg"]
+                    yeni_gram = (ons_val / 31.1035) * usd
+                    eski_gram = ((ons_val - ons_chg) / 31.1035) * (usd - usd_chg)
+                    res[metal.replace("Ons", "Gram")] = {"val": yeni_gram, "chg": yeni_gram - eski_gram}
+        return res
 
     market_data = fetch_market_snapshot()
 
