@@ -282,6 +282,8 @@ def auto_cleanup_db(days: int = 30):
     except Exception:
         pass
 
+def get_live_price(symbol: str) -> float:
+    """Veritabanını (Cache) tamamen pas geçip, yfinance üzerinden anlık en son fiyatı çeker."""
     ticker = _make_ticker(symbol)
     session = _get_yf_session()
     def _safe_get(p, iv):
