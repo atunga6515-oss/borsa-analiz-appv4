@@ -7,7 +7,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Mevcut kütüphanelerden destek çekimleri
-from kap_news import _init_gemini
+from kap_news import _get_client
 from data_loader import fetch_data
 from screener import BIST_ALL_SYMBOLS
 
@@ -89,40 +89,38 @@ def pre_filter_ticker(ticker, news_items):
 
 @st.cache_data(ttl=3600*24, show_spinner=False)
 def analyze_alpha_news(ticker, news_items, px_chg):
-    """Gemini 3.1 Pro (1.5 Flash üzerinden) Alpha keşfi için güçlü prompt analizi"""
-    model = _init_gemini()
-    if not model:
+    """Gemini AI ile Alpha keşfi için güçlü prompt analizi (Yeni SDK)"""
+    client = _get_client()
+    if not client:
         return None
         
     news_text = "\n".join([f"- {item['title']} : {item['description'][:100]}..." for item in news_items])
     
     prompt = f"""
-Sen kıdemli bir BIST Quant Analisti ve Alpha Fırsat Avcısı Fon Yöneticisisin. 
-"{ticker}" hissesi son 15 günde tam %{px_chg:.1f} fiyat hareketi yaptı.
-Aşağıda bu hisseyle ilgili ulusal basında (Investing RSS) çıkan son haber akışları yer alıyor:
+    Sen kıdemli bir BIST Quant Analisti ve Alpha Fırsat Avcısı Fon Yöneticisisin. 
+    "{ticker}" hissesi son 15 günde tam %{px_chg:.1f} fiyat hareketi yaptı.
+    Aşağıda bu hisseyle ilgili ulusal basında (Investing RSS) çıkan son haber akışları yer alıyor:
 
-{news_text}
+    {news_text}
 
-Bu haber veya haberleri derleyip AŞAĞIDAKİ SORULARI YANITLA. Sadece JSON döndür. Markdown bloğu kullanma.
-
-Sorular:
-1. Haberin Niteliği: Operasyonel mi (rutin), Finansal mı (ihale/kar/temettü vb.), Stratejik mi (birleşme/yatırım/satınalma vb.)?
-2. Sürdürülebilirlik: Fiyata etkisi: Kısa (1-5 gün), Orta (1-3 hafta), Uzun (1+ Ay) vadeli mi?
-3. Fiyat-Haber Uyumu: Haber ne kadar büyük? Hisse fiyata yeterince tepki vermiş mi? Eğer hisse daha tavan serisine veya tam yükselişe başlamamışsa ve haber güçlü finansal/stratejikse bu bir "Potansiyel Alpha"dır. 'Önem Skoru'nu (0-100) ona göre ayarla.
-4. AI Tahmini: Yükseliş devam eder mi? (Evet/Hayır/Kararsız).
-
-SADECE ŞU ÖRNEK JSON FORMATINI DÖNDÜR, ek metin yazma:
-{{
-  "nitelik": "Stratejik",
-  "vade": "Orta",
-  "skor": 85,
-  "tahmin": "Evet",
-  "ozet": "Şirket dev bir ihale almış ancak portföy yöneticileri bunu hisseye henüz dökmemiş, fiyat baskılanmış formda. Alpha potansiyeli çok yüksek."
-}}
+    Haberleri derleyip JSON formatında analiz et. (nitelik, vade, skor 0-100, tahmin Evet/Hayır, ozet)
+    SADECE JSON döndür.
     """
     
     try:
-        response = model.generate_content(prompt)
+        # Yeni SDK - Batch Model Denemeleri
+        response = None
+        for model_name in ['gemini-2.0-flash', 'gemini-1.5-flash']:
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt
+                )
+                if response and response.text: break
+            except: continue
+            
+        if not response or not response.text: return None
+        
         match = re.search(r'\{.*\}', response.text, re.DOTALL)
         if match:
             return json.loads(match.group(0))
