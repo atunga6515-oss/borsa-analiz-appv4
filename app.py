@@ -182,28 +182,35 @@ def render_login_page():
     
     @st.cache_data(ttl=60)
     def fetch_market_snapshot():
+        # Ana semboller ve alternatif (fallback) sembolleri tanımlayalım
         symbols_map = {
-            "BIST 100": "XU100.IS", "BIST 30": "XU030.IS", 
-            "USD/TRY": "USDTRY=X", "EUR/TRY": "EURTRY=X",
-            "BTC/USD": "BTC-USD", "ETH/USD": "ETH-USD",
-            "Altın Ons": "GC=F", "Gümüş Ons": "SI=F",
-            "Brent Petrol": "BZ=F"
+            "BIST 100": ["XU100.IS", "^XU100"], 
+            "BIST 30": ["XU030.IS", "^XU030"], 
+            "USD/TRY": ["USDTRY=X", "TRY=X"], 
+            "EUR/TRY": ["EURTRY=X", "EURTRY=X"],
+            "BTC/USD": ["BTC-USD"], 
+            "ETH/USD": ["ETH-USD"],
+            "Altın Ons": ["GC=F", "GC=F"], 
+            "Gümüş Ons": ["SI=F", "SI=F"],
+            "Brent Petrol": ["BZ=F", "BZ=F"]
         }
         
-        def fetch_single(label, sym):
+        def fetch_single(label, sym_list):
             try:
-                # Paralel çekimde her biri bağımsızdır, timeout riskini azaltır
-                d = yf.download(sym, period="5d", interval="1d", progress=False, auto_adjust=False, repair=True)
-                if not d.empty:
-                    # MultiIndex kontrolü (tek sembolde genelde olmaz ama garantiye alalım)
-                    if isinstance(d.columns, pd.MultiIndex):
-                        d.columns = d.columns.droplevel(1) if sym in d.columns.get_level_values(1) else d.columns.droplevel(0)
-                    
-                    ticker_data = d.dropna(subset=['Close'])
-                    if not ticker_data.empty:
-                        px = float(ticker_data['Close'].iloc[-1])
-                        prev_px = float(ticker_data['Close'].iloc[-2]) if len(ticker_data) >= 2 else px
-                        return label, {"val": px, "chg": px - prev_px}
+                # yfinance bazen period="5d" ile veri bulamazsa "delisted" hatası veriyor. 
+                # "1mo" (1 ay) kullanarak daha güvenli veri çekiyoruz.
+                for sym in sym_list:
+                    d = yf.download(sym, period="1mo", interval="1d", progress=False, auto_adjust=False, repair=True)
+                    if not d.empty:
+                        # MultiIndex temizliği
+                        if isinstance(d.columns, pd.MultiIndex):
+                            d.columns = d.columns.droplevel(1) if sym in d.columns.get_level_values(1) else d.columns.droplevel(0)
+                        
+                        ticker_data = d.dropna(subset=['Close'])
+                        if not ticker_data.empty:
+                            px = float(ticker_data['Close'].iloc[-1])
+                            prev_px = float(ticker_data['Close'].iloc[-2]) if len(ticker_data) >= 2 else px
+                            return label, {"val": px, "chg": px - prev_px}
                 return label, {"val": 0, "chg": 0}
             except:
                 return label, {"val": 0, "chg": 0}
@@ -211,7 +218,7 @@ def render_login_page():
         # Paralel İşlemi Başlat
         res = {label: {"val": 0, "chg": 0} for label in symbols_map}
         with ThreadPoolExecutor(max_workers=10) as executor:
-            future_to_label = {executor.submit(fetch_single, label, sym): label for label, sym in symbols_map.items()}
+            future_to_label = {executor.submit(fetch_single, label, syms): label for label, syms in symbols_map.items()}
             for future in as_completed(future_to_label):
                 label = future_to_label[future]
                 try:
