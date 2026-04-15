@@ -35,14 +35,10 @@ def _get_connection():
     return conn
 
 def _get_yf_session():
-    """Yahoo Finance için tarayıcı gibi davranan bir session oluşturur."""
+    """Yahoo Finance için basitleştirilmiş tarayıcı kimliği."""
     session = requests.Session()
     session.headers.update({
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Origin': 'https://finance.yahoo.com',
-        'Referer': 'https://finance.yahoo.com/'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     })
     return session
 
@@ -114,41 +110,58 @@ def _get_last_date_in_db(ticker: str, interval: str) -> str:
 
 
 def _download_from_yfinance(ticker: str, interval: str, start: str = None, period: str = None) -> pd.DataFrame:
-    """yfinance'ten veri indirir. Başarısız olursa 1 sn bekleyip tekrar dener."""
+    """yfinance'ten veri indirir. Başarısız olursa oturumsuz deneme yapar."""
     session = _get_yf_session()
-    for attempt in range(2): # 2 deneme hakkı
-        try:
-            if start:
-                data = yf.download(ticker, start=start, interval=interval,
-                                   group_by="ticker", progress=False,
-                                   auto_adjust=False, repair=True, 
-                                   session=session, threads=False) # threads=False bot tespitini zorlaştırır
-            else:
-                data = yf.download(ticker, period=period or "90d", interval=interval,
-                                   group_by="ticker", progress=False,
-                                   auto_adjust=False, repair=True, 
-                                   session=session, threads=False)
+    
+    # 1. Deneme: Sessiz (Custom Session ile)
+    try:
+        if start:
+            data = yf.download(ticker, start=start, interval=interval,
+                               group_by="ticker", progress=False,
+                               auto_adjust=False, repair=True, 
+                               session=session, threads=False)
+        else:
+            data = yf.download(ticker, period=period or "90d", interval=interval,
+                               group_by="ticker", progress=False,
+                               auto_adjust=False, repair=True, 
+                               session=session, threads=False)
 
-            if isinstance(data.columns, pd.MultiIndex):
-                if ticker in data.columns.get_level_values(1):
-                    data = data.xs(ticker, axis=1, level=1)
-                elif ticker in data.columns.get_level_values(0):
-                    data = data.xs(ticker, axis=1, level=0)
-                else:
-                    data.columns = data.columns.droplevel(1)
+        if not data.empty:
+            return _clean_yf_data(data, ticker)
+    except:
+        pass
 
-            if not data.empty:
-                data.ffill(inplace=True)
-                data.dropna(inplace=True)
-                return data
-                
-            # Boş döndüyse (delisted hatası vb) 1 sn bekle ve tekrar dene
-            time.sleep(1)
-        except Exception:
-            if attempt == 0:
-                time.sleep(1)
-            continue
-    return pd.DataFrame()
+    # 2. Deneme: Yalın (Oturumsuz - Fallback)
+    try:
+        time.sleep(0.5)
+        if start:
+            data = yf.download(ticker, start=start, interval=interval,
+                               group_by="ticker", progress=False,
+                               auto_adjust=False, repair=True, threads=False)
+        else:
+            data = yf.download(ticker, period=period or "90d", interval=interval,
+                               group_by="ticker", progress=False,
+                               auto_adjust=False, repair=True, threads=False)
+        return _clean_yf_data(data, ticker)
+    except:
+        return pd.DataFrame()
+
+def _clean_yf_data(data: pd.DataFrame, ticker: str) -> pd.DataFrame:
+    """yfinance verisini temizler ve MultiIndex ise düzleştirir."""
+    if data.empty:
+        return pd.DataFrame()
+        
+    if isinstance(data.columns, pd.MultiIndex):
+        if ticker in data.columns.get_level_values(1):
+            data = data.xs(ticker, axis=1, level=1)
+        elif ticker in data.columns.get_level_values(0):
+            data = data.xs(ticker, axis=1, level=0)
+        else:
+            data.columns = data.columns.droplevel(1)
+            
+    data.ffill(inplace=True)
+    data.dropna(inplace=True)
+    return data
 
 
 # ============================================================
@@ -286,39 +299,34 @@ def get_live_price(symbol: str) -> float:
     """Veritabanını (Cache) tamamen pas geçip, yfinance üzerinden anlık en son fiyatı çeker."""
     ticker = _make_ticker(symbol)
     session = _get_yf_session()
+    
     def _safe_get(p, iv):
-        for _ in range(2):
-            try:
-                d = yf.download(ticker, period=p, interval=iv, progress=False, 
-                                group_by="ticker", auto_adjust=False, repair=True, 
-                                session=session, threads=False)
-                if not d.empty: return d
-                time.sleep(0.5)
-            except: time.sleep(0.5)
-        return pd.DataFrame()
+        # 1. Deneme: Session ile
+        try:
+            d = yf.download(ticker, period=p, interval=iv, progress=False, 
+                             group_by="ticker", auto_adjust=False, repair=True, 
+                             session=session, threads=False)
+            if not d.empty: return d
+        except: pass
+        
+        # 2. Deneme: Yalın
+        try:
+            time.sleep(0.3)
+            d = yf.download(ticker, period=p, interval=iv, progress=False, 
+                             group_by="ticker", auto_adjust=False, repair=True, threads=False)
+            return d
+        except: return pd.DataFrame()
 
     try:
         data = _safe_get("1d", "1m")
-        if isinstance(data.columns, pd.MultiIndex):
-            if ticker in data.columns.get_level_values(1):
-                data = data.xs(ticker, axis=1, level=1)
-            elif ticker in data.columns.get_level_values(0):
-                data = data.xs(ticker, axis=1, level=0)
-            else:
-                data.columns = data.columns.droplevel(1)
+        data = _clean_yf_data(data, ticker)
                 
         if not data.empty and 'Close' in data.columns:
             return float(data['Close'].iloc[-1])
             
         # 1 dakikalık veri bulunamadıysa günlük veriden en son fiyatı çekmeyi dene
         data = _safe_get("5d", "1d")
-        if isinstance(data.columns, pd.MultiIndex):
-            if ticker in data.columns.get_level_values(1):
-                data = data.xs(ticker, axis=1, level=1)
-            elif ticker in data.columns.get_level_values(0):
-                data = data.xs(ticker, axis=1, level=0)
-            else:
-                data.columns = data.columns.droplevel(1)
+        data = _clean_yf_data(data, ticker)
         if not data.empty and 'Close' in data.columns:
             return float(data['Close'].iloc[-1])
             

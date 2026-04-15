@@ -183,7 +183,7 @@ def render_login_page():
     from data_loader import get_live_price_with_change
     
     def _get_yf_session():
-        """Yahoo Finance için tarayıcı gibi davranan bir session oluşturur."""
+        """Yahoo Finance için basitleştirilmiş tarayıcı kimliği."""
         session = requests.Session()
         session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
@@ -207,30 +207,34 @@ def render_login_page():
         
         def fetch_single(label, sym_list):
             session = _get_yf_session()
-            for attempt in range(2): # 2 deneme hakkı
-                try:
-                    # yfinance bazen period="5d" ile veri bulamazsa "delisted" hatası veriyor. 
-                    # "1mo" (1 ay) kullanarak daha güvenli veri çekiyoruz.
-                    for sym in sym_list:
-                        # threads=False bot tespitini zorlaştırır
-                        d = yf.download(sym, period="1mo", interval="1d", progress=False, 
-                                        auto_adjust=False, repair=True, session=session, threads=False)
-                        if not d.empty:
-                            # MultiIndex temizliği
-                            if isinstance(d.columns, pd.MultiIndex):
-                                d.columns = d.columns.droplevel(1) if sym in d.columns.get_level_values(1) else d.columns.droplevel(0)
-                            
-                            ticker_data = d.dropna(subset=['Close'])
-                            if not ticker_data.empty:
-                                px = float(ticker_data['Close'].iloc[-1])
-                                prev_px = float(ticker_data['Close'].iloc[-2]) if len(ticker_data) >= 2 else px
-                                return label, {"val": px, "chg": px - prev_px}
-                    
-                    # Eğer tüm semboller başarısız olduysa 1 saniye bekle ve tekrar dene
-                    time.sleep(1)
-                except Exception:
-                    time.sleep(1)
-                    continue
+            
+            def _try_download(use_session):
+                for sym in sym_list:
+                    current_session = session if use_session else None
+                    d = yf.download(sym, period="1mo", interval="1d", progress=False, 
+                                    auto_adjust=False, repair=True, 
+                                    session=current_session, threads=False)
+                    if not d.empty:
+                        # MultiIndex temizliği
+                        if isinstance(d.columns, pd.MultiIndex):
+                            d.columns = d.columns.droplevel(1) if sym in d.columns.get_level_values(1) else d.columns.droplevel(0)
+                        
+                        ticker_data = d.dropna(subset=['Close'])
+                        if not ticker_data.empty:
+                            px = float(ticker_data['Close'].iloc[-1])
+                            prev_px = float(ticker_data['Close'].iloc[-2]) if len(ticker_data) >= 2 else px
+                            return {"val": px, "chg": px - prev_px}
+                return None
+
+            # 1. Deneme: Session ile
+            res = _try_download(use_session=True)
+            if res: return label, res
+            
+            # 2. Deneme: Yalın
+            time.sleep(0.3)
+            res = _try_download(use_session=False)
+            if res: return label, res
+            
             return label, {"val": 0, "chg": 0}
 
         # Paralel İşlemi Başlat
