@@ -324,36 +324,48 @@ def render_login_page():
         .p-title {{ font-size: 2.2rem; font-weight: 900; color: white; margin: 0; letter-spacing: -1.5px; line-height: 1; }}
         .p-subtitle {{ font-size: 0.85rem; color: #3498db; font-weight: bold; text-transform: uppercase; margin-top: 8px; }}
 
-        /* Sabit Alt Veri Çubuğu (Fixed Bottom Bar) */
-        .market-bar {{
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            width: 100%;
-            background: rgba(0, 0, 0, 0.7);
-            backdrop-filter: blur(15px);
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-            display: flex;
-            justify-content: space-evenly;
-            align-items: center;
-            padding: 12px 0;
-            z-index: 1000;
-            overflow-x: auto;
-        }}
-        .m-card-bottom {{ 
-            min-width: 110px; 
-            text-align: center; 
-            padding: 5px 10px;
+        .m-lbl { color: #888; font-size: 0.62rem; text-transform: uppercase; font-weight: bold; letter-spacing: 0.3px; }
+        .m-val { font-weight: 800; font-size: 0.88rem; margin-top: 1px; }
+        .val-up { color: #26de81; }
+        .val-down { color: #ff4757; }
+
+        /* Market Grid (Integrated) */
+        .market-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-bottom: 25px;
+            padding: 10px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+        .m-card-grid {
+            text-align: center;
+            padding: 8px 4px;
             border-radius: 8px;
-            border: 1px solid rgba(255,255,255,0.05); /* Yönlendirme eklenecek */
-        }}
-        .m-card-up {{ border-bottom: 2px solid #26de81; background: rgba(38, 222, 129, 0.05); }}
-        .m-card-down {{ border-bottom: 2px solid #ff4757; background: rgba(255, 71, 87, 0.05); }}
-        
-        .m-lbl {{ color: #aaa; font-size: 0.65rem; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px; }}
-        .m-val {{ font-weight: 900; font-size: 0.95rem; margin-top: 3px; }}
-        .val-up {{ color: #26de81; }}
-        .val-down {{ color: #ff4757; }}
+            transition: all 0.3s ease;
+        }
+        .m-card-grid:hover { background: rgba(255,255,255,0.03); transform: translateY(-2px); }
+        .grid-up { border-bottom: 2px solid #26de81; }
+        .grid-down { border-bottom: 2px solid #ff4757; }
+
+        /* Live Indicator */
+        .live-dot {
+            height: 8px;
+            width: 8px;
+            background-color: #26de81;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 5px;
+            box-shadow: 0 0 8px #26de81;
+            animation: pulse-dot 2s infinite;
+        }
+        @keyframes pulse-dot {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(38, 222, 129, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(38, 222, 129, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(38, 222, 129, 0); }
+        }
 
         /* Streamlit Overrides & UX Fixes */
         div[data-testid="stTextInput"] p {{ color: white !important; font-weight: bold !important; letter-spacing: 0.5px; margin-bottom: 5px; }}
@@ -374,8 +386,27 @@ def render_login_page():
             <div class="p-header">
                 <div class="p-title">BIST Broker Terminal</div>
                 <div class="p-subtitle">AI-Powered Hybrid Analysis</div>
+                <div style="margin-top:15px; font-size:0.7rem; color:#888;">
+                    <span class="live-dot"></span> LIVE MARKET DATA
+                </div>
             </div>
         """, unsafe_allow_html=True)
+
+        # Market Grid İnşası
+        grid_html = ""
+        for lbl, data in market_data.items():
+            val = data.get("val", 0)
+            chg = data.get("chg", 0)
+            fmt = f"{val:,.0f}" if val > 1000 else f"{val:.2f}"
+            if val == 0: fmt = "N/A"
+            
+            arrow = "▲" if chg >= 0 else "▼"
+            c_class = "grid-up" if chg >= 0 else "grid-down"
+            v_class = "val-up" if chg >= 0 else "val-down"
+            
+            grid_html += f'<div class="m-card-grid {c_class}"><div class="m-lbl">{lbl}</div><div class="m-val {v_class}">{arrow} {fmt}</div></div>'
+        
+        st.markdown(f'<div class="market-grid">{grid_html}</div>', unsafe_allow_html=True)
 
         with st.form("auth_form_final"):
             u_input = st.text_input("Kullanıcı Adı", placeholder="user")
@@ -392,22 +423,6 @@ def render_login_page():
                     
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # Tam Ekran Sabit Veri Kartları (Alt Bar)
-    cards_html = ""
-    for lbl, data in market_data.items():
-        val = data.get("val", 0)
-        chg = data.get("chg", 0)
-        
-        fmt = f"{val:,.0f}" if val > 1000 else f"{val:.2f}"
-        if val == 0: fmt = "N/A"
-        
-        arrow = "▲" if chg >= 0 else "▼"
-        c_class = "m-card-up" if chg >= 0 else "m-card-down"
-        v_class = "val-up" if chg >= 0 else "val-down"
-        
-        cards_html += f'<div class="m-card-bottom {c_class}"><div class="m-lbl">{lbl}</div><div class="m-val {v_class}">{arrow} {fmt}</div></div>'
-    
-    st.markdown(f'<div class="market-bar">{cards_html}</div>', unsafe_allow_html=True)
 
 def main():
     # --- OTURUM YÖNETİMİ ---
