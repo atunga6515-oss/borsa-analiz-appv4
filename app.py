@@ -4,7 +4,6 @@ import yfinance as yf
 import requests
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from streamlit.runtime.scriptrunner import add_script_run_ctx, get_script_run_ctx
 from data_loader import fetch_data, get_db_stats, clear_db, get_ticker_db_info, get_live_price
 from indicators import calculate_indicators, generate_signals_and_score, get_market_regime
 from visualizations import create_advanced_chart, create_ml_chart, create_equity_curve_chart
@@ -234,16 +233,10 @@ def render_login_page():
                     continue
             return label, {"val": 0, "chg": 0}
 
-        # Paralel İşlemi Başlat (Context ile)
+        # Paralel İşlemi Başlat
         res = {label: {"val": 0, "chg": 0} for label in symbols_map}
-        ctx = get_script_run_ctx()
-        
         with ThreadPoolExecutor(max_workers=10) as executor:
-            def wrapper(l, s):
-                if ctx: add_script_run_ctx(ctx)
-                return fetch_single(l, s)
-
-            future_to_label = {executor.submit(wrapper, label, syms): label for label, syms in symbols_map.items()}
+            future_to_label = {executor.submit(fetch_single, label, syms): label for label, syms in symbols_map.items()}
             for future in as_completed(future_to_label):
                 label = future_to_label[future]
                 try:
