@@ -324,13 +324,13 @@ def render_login_page():
         .p-title {{ font-size: 2.2rem; font-weight: 900; color: white; margin: 0; letter-spacing: -1.5px; line-height: 1; }}
         .p-subtitle {{ font-size: 0.85rem; color: #3498db; font-weight: bold; text-transform: uppercase; margin-top: 8px; }}
 
-        .m-lbl { color: #888; font-size: 0.62rem; text-transform: uppercase; font-weight: bold; letter-spacing: 0.3px; }
-        .m-val { font-weight: 800; font-size: 0.88rem; margin-top: 1px; }
-        .val-up { color: #26de81; }
-        .val-down { color: #ff4757; }
+        .m-lbl {{ color: #888; font-size: 0.62rem; text-transform: uppercase; font-weight: bold; letter-spacing: 0.3px; }}
+        .m-val {{ font-weight: 800; font-size: 0.88rem; margin-top: 1px; }}
+        .val-up {{ color: #26de81; }}
+        .val-down {{ color: #ff4757; }}
 
         /* Market Grid (Integrated) */
-        .market-grid {
+        .market-grid {{
             display: grid;
             grid-template-columns: repeat(3, 1fr);
             gap: 10px;
@@ -339,19 +339,19 @@ def render_login_page():
             background: rgba(0,0,0,0.2);
             border-radius: 12px;
             border: 1px solid rgba(255,255,255,0.05);
-        }
-        .m-card-grid {
+        }}
+        .m-card-grid {{
             text-align: center;
             padding: 8px 4px;
             border-radius: 8px;
             transition: all 0.3s ease;
-        }
-        .m-card-grid:hover { background: rgba(255,255,255,0.03); transform: translateY(-2px); }
-        .grid-up { border-bottom: 2px solid #26de81; }
-        .grid-down { border-bottom: 2px solid #ff4757; }
+        }}
+        .m-card-grid:hover {{ background: rgba(255,255,255,0.03); transform: translateY(-2px); }}
+        .grid-up {{ border-bottom: 2px solid #26de81; }}
+        .grid-down {{ border-bottom: 2px solid #ff4757; }}
 
         /* Live Indicator */
-        .live-dot {
+        .live-dot {{
             height: 8px;
             width: 8px;
             background-color: #26de81;
@@ -360,12 +360,12 @@ def render_login_page():
             margin-right: 5px;
             box-shadow: 0 0 8px #26de81;
             animation: pulse-dot 2s infinite;
-        }
-        @keyframes pulse-dot {
-            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(38, 222, 129, 0.7); }
-            70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(38, 222, 129, 0); }
-            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(38, 222, 129, 0); }
-        }
+        }}
+        @keyframes pulse-dot {{
+            0% {{ transform: scale(0.95); box-shadow: 0 0 0 0 rgba(38, 222, 129, 0.7); }}
+            70% {{ transform: scale(1); box-shadow: 0 0 0 10px rgba(38, 222, 129, 0); }}
+            100% {{ transform: scale(0.95); box-shadow: 0 0 0 0 rgba(38, 222, 129, 0); }}
+        }}
 
         /* Streamlit Overrides & UX Fixes */
         div[data-testid="stTextInput"] p {{ color: white !important; font-weight: bold !important; letter-spacing: 0.5px; margin-bottom: 5px; }}
