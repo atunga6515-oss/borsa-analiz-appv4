@@ -4,22 +4,19 @@ import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
 import json
-import google.generativeai as genai
+from google import genai
 from datetime import datetime, timezone
 import email.utils
 import math
 
-# Gemini API Yapılandırması
-def _init_gemini():
+# Gemini API Yapılandırması (Yeni SDK - google-genai)
+def _get_client():
     api_key = st.secrets.get("GEMINI_API_KEY")
     if api_key:
         try:
-            genai.configure(api_key=api_key)
-            # En geniş uyumluluk için model listesinden kontrol ederek başlatma
-            return genai.GenerativeModel('gemini-1.5-flash')
-        except Exception:
-            # Yedek model ismi (bazı SDK sürümleri için)
-            return genai.GenerativeModel('models/gemini-1.5-flash')
+            return genai.Client(api_key=api_key)
+        except Exception as e:
+            st.error(f"Gemini Client Başlatma Hatası: {str(e)}")
     return None
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -28,9 +25,9 @@ def analyze_sentiment_with_ai(news_items):
     Haber listesini Gemini AI ile batch olarak analiz eder.
     Hız için tüm haberleri tek bir prompt ile gönderir.
     """
-    model = _init_gemini()
-    if not model:
-        return None # API yoksa fallback'e geç
+    client = _get_client()
+    if not client:
+        return None 
 
     news_text = "\n".join([f"{i+1}. {item['title']}" for i, item in enumerate(news_items)])
     
@@ -53,51 +50,24 @@ def analyze_sentiment_with_ai(news_items):
     ]
     """
 
-    # Dinamik ve Gerçek API Tabanlı Model Testi
-    response = None
-    last_error = ""
-    valid_models = []
-    
     try:
-
-        # API hesabında yetkili olan gerçek modellerin listesini çekiyoruz
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                valid_models.append(m.name)
-                
-        if not valid_models:
-            st.sidebar.warning("⚠️ Bu API anahtarında 'generateContent' yetkisine sahip hiçbir model bulunamadı (Bölge/Yetki engeli olabilir).")
-            return None
-            
-        # İstediğimiz modellere öncelik ver, ama TAM adlarını (models/gemini...) valid_models'dan al.
-        preferred_keywords = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro']
-        models_to_try = []
-        for pk in preferred_keywords:
-            for vm in valid_models:
-                if pk in vm and vm not in models_to_try:
-                    models_to_try.append(vm)
-                    
-        # Eğer favori bir model eşleşmediyse, hesaptaki ilk aktif modeli zorla kullan.
-        if not models_to_try:
-            models_to_try = valid_models
-
-        # Artık kesin onaylı modellerle analiz testine başlıyoruz
-        for m_name in models_to_try:
+        # Yeni SDK ile içerik üretimi (Default olarak en güncel flash modelini dener)
+        # Eğer model bulunamazsa veya kota hatası verirse fallback modelleri deneyebiliriz
+        for m_name in ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro']:
             try:
-                temp_model = genai.GenerativeModel(m_name)
-                response = temp_model.generate_content(prompt)
-                if response:
+                response = client.models.generate_content(
+                    model=m_name,
+                    contents=prompt
+                )
+                if response and response.text:
                     break
-            except Exception as e:
-                last_error = str(e)
+            except Exception:
                 continue
-                
-    except Exception as list_e:
-        st.error(f"Google API Liste Hatası: {str(list_e)}")
-        return None
+        else:
+            return None # Hiçbir model yanıt vermedi
 
-    if not response:
-        st.error(f"AI Model Hatası: Hiçbir onaylı model yanıt vermedi.\nDenenen Modeller: {models_to_try}\nSon Hata: {last_error}")
+    except Exception as e:
+        st.error(f"AI Analiz Hatası: {str(e)}")
         return None
 
     try:
