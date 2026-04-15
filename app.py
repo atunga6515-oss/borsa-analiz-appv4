@@ -210,20 +210,27 @@ def render_login_page():
             
             def _try_download(use_session):
                 for sym in sym_list:
-                    current_session = session if use_session else None
-                    d = yf.download(sym, period="1mo", interval="1d", progress=False, 
-                                    auto_adjust=False, repair=True, 
-                                    session=current_session, threads=False)
-                    if not d.empty:
-                        # MultiIndex temizliği
+                    try:
+                        current_session = session if use_session else None
+                        d = yf.download(sym, period="1mo", interval="1d", progress=False, 
+                                        auto_adjust=False, repair=True, group_by="ticker",
+                                        session=current_session, threads=False)
+                        
+                        if d.empty: continue
+                        
+                        # MultiIndex handle
                         if isinstance(d.columns, pd.MultiIndex):
-                            d.columns = d.columns.droplevel(1) if sym in d.columns.get_level_values(1) else d.columns.droplevel(0)
+                            if sym in d.columns.get_level_values(1): d = d.xs(sym, axis=1, level=1)
+                            elif sym in d.columns.get_level_values(0): d = d.xs(sym, axis=1, level=0)
+                            else: d.columns = d.columns.droplevel(1)
                         
                         ticker_data = d.dropna(subset=['Close'])
                         if not ticker_data.empty:
                             px = float(ticker_data['Close'].iloc[-1])
                             prev_px = float(ticker_data['Close'].iloc[-2]) if len(ticker_data) >= 2 else px
                             return {"val": px, "chg": px - prev_px}
+                    except:
+                        continue
                 return None
 
             # 1. Deneme: Session ile
@@ -231,18 +238,21 @@ def render_login_page():
             if res: return label, res
             
             # 2. Deneme: Yalın
-            time.sleep(0.3)
+            time.sleep(0.4) # Bot tespitini zorlaştıran gecikme
             res = _try_download(use_session=False)
             if res: return label, res
             
             return label, {"val": 0, "chg": 0}
 
-        # Paralel İşlemi Başlat
+        # Paralel İşlemi Başlat (Dirençli Mod: 5 Worker + Jitter)
         res = {label: {"val": 0, "chg": 0} for label in symbols_map}
-        with ThreadPoolExecutor(max_workers=10) as executor:
-            future_to_label = {executor.submit(fetch_single, label, syms): label for label, syms in symbols_map.items()}
-            for future in as_completed(future_to_label):
-                label = future_to_label[future]
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = []
+            for label, syms in symbols_map.items():
+                futures.append(executor.submit(fetch_single, label, syms))
+                time.sleep(0.1) # Burst etkisini azaltmak için mikrosaniye bekleme
+                
+            for future in as_completed(futures):
                 try:
                     l, val_res = future.result()
                     res[l] = val_res
