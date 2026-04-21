@@ -1215,7 +1215,7 @@ def main():
 
             # DÜZENLENEBİLİR TABLO ENTEGRASYONU
             edited_df = st.data_editor(
-                p_df, 
+                styled_p_df, 
                 column_config={
                     "ID": st.column_config.NumberColumn("ID", disabled=True),
                     "Hisse": st.column_config.TextColumn("Hisse", disabled=True),
