@@ -1070,6 +1070,22 @@ def main():
         st.title("📈 Sanal Portföy Yönetimi")
         st.markdown("Beğendiğiniz hisseleri sanal olarak alıp, zaman içindeki başarınızı takip edebilirsiniz.")
 
+        def save_portfolio_changes():
+            editor_state = st.session_state.get("portfolio_editor", {})
+            changes = editor_state.get("edited_rows", {})
+            mapping = st.session_state.get("portfolio_mapping", [])
+            
+            if changes and mapping:
+                for idx_str, row_changes in changes.items():
+                    idx = int(idx_str)
+                    if idx < len(mapping):
+                        trade_id, old_adet, old_fiyat = mapping[idx]
+                        new_adet = row_changes.get("Adet", old_adet)
+                        new_fiyat = row_changes.get("Maliyet (₺)", old_fiyat)
+                        pf.pozisyon_guncelle(trade_id, new_adet, new_fiyat)
+                st.session_state['portfolio_saved_msg'] = True
+                st.session_state['force_portfolio_refresh'] = True
+
         with st.expander("➕ Yeni Alım Ekle"):
             c1, c2, c3 = st.columns(3)
             with c1:
@@ -1120,45 +1136,66 @@ def main():
             st.subheader("🏁 Açık Pozisyonlar")
         with c_hdr2:
             if st.button("🔄 Canlı Fiyatları Yenile", width='stretch'):
+                st.session_state['force_portfolio_refresh'] = True
                 st.rerun()
 
         acik_df = pf.acik_pozisyonlar(current_user)
         
         if not acik_df.empty:
             p_data = []
-            with st.spinner("Anlık fiyatlar piyasadan çekiliyor..."):
-                for idx, row in acik_df.iterrows():
-                    # Gerçek zamanlı (1 dakikalık gecikmeli) güncel fiyatı çek
-                    curr_price = get_live_price(row['ticker'])
-                    if curr_price == 0.0: # Fiyat bulunamadıysa veritabanından yedek olarak çek
-                        df_curr = fetch_data(row['ticker'], "1d", "5d")
-                        curr_price = df_curr['Close'].iloc[-1] if not df_curr.empty else 0
+            
+            if 'portfoy_canli_fiyat' not in st.session_state or st.session_state.get('force_portfolio_refresh'):
+                st.session_state['portfoy_canli_fiyat'] = {}
+                st.session_state['force_portfolio_refresh'] = False
+
+            fiyatlar_guncellendi = False
+            for idx, row in acik_df.iterrows():
+                if row['ticker'] not in st.session_state['portfoy_canli_fiyat']:
+                    fiyatlar_guncellendi = True
+                    break
+                    
+            if fiyatlar_guncellendi:
+                with st.spinner("Anlık fiyatlar piyasadan çekiliyor..."):
+                    for idx, row in acik_df.iterrows():
+                        ticker = row['ticker']
+                        if ticker not in st.session_state['portfoy_canli_fiyat']:
+                            curr_price = get_live_price(ticker)
+                            if curr_price == 0.0:
+                                df_curr = fetch_data(ticker, "1d", "5d")
+                                curr_price = df_curr['Close'].iloc[-1] if not df_curr.empty else 0
+                            st.session_state['portfoy_canli_fiyat'][ticker] = curr_price
+
+            for idx, row in acik_df.iterrows():
+                ticker = row['ticker']
+                curr_price = st.session_state['portfoy_canli_fiyat'].get(ticker, 0.0)
                 
-                    maliyet = row['adet'] * row['alis_fiyati']
-                    guncel_deger = row['adet'] * curr_price
-                    kar_zarar = guncel_deger - maliyet
-                    kz_yuzde = (kar_zarar / maliyet) * 100 if maliyet > 0 else 0
-                    
-                    # Risk durumunu hesapla
-                    sl_text = f"{row.get('sl', 0):.2f}" if pd.notna(row.get('sl')) else "Yok"
-                    tp_text = f"{row.get('tp', 0):.2f}" if pd.notna(row.get('tp')) else "Yok"
-                    var_text = f"{row.get('var', 0):.2f}" if pd.notna(row.get('var')) else "Yok"
-                    
-                    p_data.append({
-                        "ID": row['id'],
-                        "Hisse": row['ticker'],
-                        "Adet": row['adet'],
-                        "Maliyet (₺)": round(row['alis_fiyati'], 2),
-                        "Güncel (₺)": round(curr_price, 2),
-                        "Stop-Loss": sl_text,
-                        "Take-Profit": tp_text,
-                        "Risk (VaR) ₺": var_text,
-                        "Kâr/Zarar (₺)": round(kar_zarar, 2),
-                        "Değişim (%)": round(kz_yuzde, 2),
-                        "Tarih": row['alis_tarihi']
-                    })
+                maliyet = row['adet'] * row['alis_fiyati']
+                guncel_deger = row['adet'] * curr_price
+                kar_zarar = guncel_deger - maliyet
+                kz_yuzde = (kar_zarar / maliyet) * 100 if maliyet > 0 else 0
+                
+                # Risk durumunu hesapla
+                sl_text = f"{row.get('sl', 0):.2f}" if pd.notna(row.get('sl')) else "Yok"
+                tp_text = f"{row.get('tp', 0):.2f}" if pd.notna(row.get('tp')) else "Yok"
+                var_text = f"{row.get('var', 0):.2f}" if pd.notna(row.get('var')) else "Yok"
+                
+                p_data.append({
+                    "ID": row['id'],
+                    "Hisse": row['ticker'],
+                    "Adet": row['adet'],
+                    "Maliyet (₺)": round(row['alis_fiyati'], 2),
+                    "Güncel (₺)": round(curr_price, 2),
+                    "Stop-Loss": sl_text,
+                    "Take-Profit": tp_text,
+                    "Risk (VaR) ₺": var_text,
+                    "Kâr/Zarar (₺)": round(kar_zarar, 2),
+                    "Değişim (%)": round(kz_yuzde, 2),
+                    "Tarih": row['alis_tarihi']
+                })
             
             p_df = pd.DataFrame(p_data)
+            st.session_state['portfolio_mapping'] = [(r['ID'], r['Adet'], r['Maliyet (₺)']) for r in p_data]
+
             
             # Tablo gösterimi
             def highlight_pnl(val):
@@ -1199,20 +1236,11 @@ def main():
             
             # Değişiklikleri Kontrol Et ve Buton Göster
             if st.session_state.portfolio_editor.get("edited_rows"):
-                if st.button("💾 Değişiklikleri Veritabanına Kaydet", type="primary", use_container_width=True):
-                    changes = st.session_state.portfolio_editor["edited_rows"]
-                    for idx_str, row_changes in changes.items():
-                        idx = int(idx_str)
-                        trade_id = p_df.iloc[idx]["ID"]
-                        
-                        # Mevcut değerleri al, yenileriyle güncelle
-                        new_adet = row_changes.get("Adet", p_df.iloc[idx]["Adet"])
-                        new_fiyat = row_changes.get("Maliyet (₺)", p_df.iloc[idx]["Maliyet (₺)"])
-                        
-                        pf.pozisyon_guncelle(trade_id, new_adet, new_fiyat)
-                    
-                    st.success("✅ Portföy başarıyla güncellendi!")
-                    st.rerun()
+                st.button("💾 Değişiklikleri Veritabanına Kaydet", type="primary", use_container_width=True, on_click=save_portfolio_changes)
+
+            if st.session_state.get('portfolio_saved_msg'):
+                st.success("✅ Portföy başarıyla güncellendi!")
+                st.session_state['portfolio_saved_msg'] = False
 
             # DİNAMİK HESAPLAMA: edited_df üzerinden anlık metrikleri hesapla
             toplam_maliyet = (edited_df['Adet'] * edited_df['Maliyet (₺)']).sum()
