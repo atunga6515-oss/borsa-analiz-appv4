@@ -102,3 +102,27 @@ def portfoy_temizle(username: str):
     conn.execute("DELETE FROM portfolio WHERE username=?", (username,))
     conn.commit()
     conn.close()
+
+
+def pozisyon_guncelle(trade_id: int, yeni_adet: float, yeni_fiyat: float):
+    """Mevcut bir pozisyonun adet ve maliyet bilgilerini günceller."""
+    conn = _get_conn()
+    trade = conn.execute("SELECT sl FROM portfolio WHERE id=?", (trade_id,)).fetchone()
+    
+    new_var = None
+    if trade and trade[0] is not None:
+        # sl varsa VaR'ı yeniden hesapla
+        sl = trade[0]
+        new_var = round((yeni_fiyat - sl) * yeni_adet, 2)
+        
+    if new_var is not None:
+        conn.execute("""
+            UPDATE portfolio SET adet=?, alis_fiyati=?, var=? WHERE id=?
+        """, (yeni_adet, yeni_fiyat, new_var, trade_id))
+    else:
+        conn.execute("""
+            UPDATE portfolio SET adet=?, alis_fiyati=? WHERE id=?
+        """, (yeni_adet, yeni_fiyat, trade_id))
+        
+    conn.commit()
+    conn.close()

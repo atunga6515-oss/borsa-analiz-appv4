@@ -1176,11 +1176,47 @@ def main():
             except Exception:
                 styled_p_df = p_df # Hata durumunda stil olmadan göster
 
-            st.dataframe(styled_p_df.format(precision=2) if hasattr(styled_p_df, 'format') else styled_p_df, width='stretch')
+            # DÜZENLENEBİLİR TABLO ENTEGRASYONU
+            edited_df = st.data_editor(
+                p_df, 
+                column_config={
+                    "ID": st.column_config.NumberColumn("ID", disabled=True),
+                    "Hisse": st.column_config.TextColumn("Hisse", disabled=True),
+                    "Güncel (₺)": st.column_config.NumberColumn("Güncel (₺)", disabled=True),
+                    "Stop-Loss": st.column_config.TextColumn("Stop-Loss", disabled=True),
+                    "Take-Profit": st.column_config.TextColumn("Take-Profit", disabled=True),
+                    "Risk (VaR) ₺": st.column_config.TextColumn("Risk (VaR) ₺", disabled=True),
+                    "Kâr/Zarar (₺)": st.column_config.NumberColumn("Kâr/Zarar (₺)", disabled=True),
+                    "Değişim (%)": st.column_config.NumberColumn("Değişim (%)", disabled=True),
+                    "Tarih": st.column_config.TextColumn("Tarih", disabled=True),
+                    "Adet": st.column_config.NumberColumn("Adet", min_value=0.1, required=True),
+                    "Maliyet (₺)": st.column_config.NumberColumn("Maliyet (₺)", min_value=0.01, required=True)
+                },
+                hide_index=True,
+                use_container_width=True,
+                key="portfolio_editor"
+            )
             
-            # Toplam Durum
-            toplam_maliyet = sum(d['Adet'] * d['Maliyet (₺)'] for d in p_data)
-            toplam_guncel = sum(d['Adet'] * d['Güncel (₺)'] for d in p_data)
+            # Değişiklikleri Kontrol Et ve Buton Göster
+            if st.session_state.portfolio_editor.get("edited_rows"):
+                if st.button("💾 Değişiklikleri Veritabanına Kaydet", type="primary", use_container_width=True):
+                    changes = st.session_state.portfolio_editor["edited_rows"]
+                    for idx_str, row_changes in changes.items():
+                        idx = int(idx_str)
+                        trade_id = p_df.iloc[idx]["ID"]
+                        
+                        # Mevcut değerleri al, yenileriyle güncelle
+                        new_adet = row_changes.get("Adet", p_df.iloc[idx]["Adet"])
+                        new_fiyat = row_changes.get("Maliyet (₺)", p_df.iloc[idx]["Maliyet (₺)"])
+                        
+                        pf.pozisyon_guncelle(trade_id, new_adet, new_fiyat)
+                    
+                    st.success("✅ Portföy başarıyla güncellendi!")
+                    st.rerun()
+
+            # DİNAMİK HESAPLAMA: edited_df üzerinden anlık metrikleri hesapla
+            toplam_maliyet = (edited_df['Adet'] * edited_df['Maliyet (₺)']).sum()
+            toplam_guncel = (edited_df['Adet'] * edited_df['Güncel (₺)']).sum()
             toplam_kz = toplam_guncel - toplam_maliyet
             toplam_yuzde = (toplam_kz / toplam_maliyet) * 100 if toplam_maliyet > 0 else 0
             
@@ -1189,23 +1225,26 @@ def main():
             mc2.metric("Portföy Değeri", f"₺{toplam_guncel:,.2f}")
             mc3.metric("Net Kâr/Zarar", f"₺{toplam_kz:,.2f}", f"{toplam_yuzde:.2f}%")
 
-            # Görsel Grafikler
+            # Görsel Grafikler İçin Türetilmiş Kolonları Güncelle
+            edited_df['Kâr/Zarar (₺)'] = (edited_df['Adet'] * edited_df['Güncel (₺)']) - (edited_df['Adet'] * edited_df['Maliyet (₺)'])
+            edited_df['Değişim (%)'] = (edited_df['Kâr/Zarar (₺)'] / (edited_df['Adet'] * edited_df['Maliyet (₺)'])) * 100
+            
             st.markdown("---")
             gc1, gc2 = st.columns(2)
             
             with gc1:
                 st.subheader("🍕 Portföy Dağılımı")
-                fig_pie = px.pie(p_df, values='Adet', names='Hisse', title='Hisse Dağılımı (Adet Bazlı)', hole=0.4, template='plotly_dark')
-                st.plotly_chart(fig_pie, width='stretch')
+                fig_pie = px.pie(edited_df, values='Adet', names='Hisse', title='Hisse Dağılımı (Adet Bazlı)', hole=0.4, template='plotly_dark')
+                st.plotly_chart(fig_pie, use_container_width=True)
             
             with gc2:
                 st.subheader("📊 Hisse Bazlı Kar/Zarar")
-                p_df_sorted = p_df.sort_values('Kâr/Zarar (₺)', ascending=False)
+                p_df_sorted = edited_df.sort_values('Kâr/Zarar (₺)', ascending=False)
                 fig_bar = px.bar(p_df_sorted, x='Hisse', y='Kâr/Zarar (₺)', color='Değişim (%)',
                                  title='Hisse Bazlı Kazanç Durumu', template='plotly_dark',
                                  color_continuous_scale=['red', 'yellow', 'green'],
                                  color_continuous_midpoint=0)
-                st.plotly_chart(fig_bar, width='stretch')
+                st.plotly_chart(fig_bar, use_container_width=True)
 
             # İşlem Kapatma
             st.markdown("---")
