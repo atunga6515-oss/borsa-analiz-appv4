@@ -441,6 +441,10 @@ def main():
         st.rerun()
 
     current_user = st.session_state.username
+    
+    # Versiyon Bilgisi
+    st.sidebar.markdown("---")
+    st.sidebar.caption("🏷️ **Versiyon: v1.6.0**")
 
     # Navigasyon
     mode = st.sidebar.radio("📁 Terminal Modülleri", [
