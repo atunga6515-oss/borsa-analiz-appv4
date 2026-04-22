@@ -33,6 +33,9 @@ def seed_mock_warrants():
         ('THYAB', 'THYAO', 'CALL', 300.0, '2026-06-30', 0.1, 'IS VARANT', 0.48),
         ('THYPA', 'THYAO', 'PUT', 260.0, '2026-06-30', 0.1, 'IS VARANT', 0.50),
         ('AKBBA', 'AKBNK', 'CALL', 45.0, '2026-05-31', 0.5, 'AK VARANT', 0.42),
+        ('DAAAA', 'XU030', 'CALL', 11000.0, '2026-06-30', 0.001, 'IS VARANT', 0.35),
+        ('DAAAB', 'XU030', 'CALL', 11500.0, '2026-06-30', 0.001, 'IS VARANT', 0.38),
+        ('DAAPA', 'XU030', 'PUT', 10000.0, '2026-06-30', 0.001, 'IS VARANT', 0.40),
     ]
     for m in mock_data:
         try:
