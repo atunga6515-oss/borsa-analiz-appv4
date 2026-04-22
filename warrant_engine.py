@@ -101,3 +101,52 @@ class WarrantEngine:
         if 5 <= leverage <= 15: score += 15 # Optimal kaldıraç bölgesi
         
         return max(0, min(100, score))
+    @staticmethod
+    def get_top_warrants(warrant_list_df, get_price_func, r_rate=0.45):
+        """
+        Tüm varant listesini tarayarak en potansiyelli 'Star List' adaylarını seçer.
+        """
+        import pandas as pd
+        from datetime import datetime
+        
+        results = []
+        for _, row in warrant_list_df.iterrows():
+            try:
+                # 1. Dayanak Varlık Fiyatı
+                underlying_price = get_price_func(row['underlying'])
+                if underlying_price <= 0: continue
+                
+                # 2. Vade Analizi
+                expiry = datetime.strptime(row['expiry_date'], '%Y-%m-%d')
+                t_days = (expiry - datetime.now()).days
+                t_years = t_days / 365
+                
+                # 3. Greeks & Teorik
+                t_price = WarrantEngine.black_scholes(underlying_price, row['strike'], t_years, r_rate, row['iv'], row['type'].lower())
+                greeks = WarrantEngine.calculate_greeks(underlying_price, row['strike'], t_years, r_rate, row['iv'], row['type'].lower())
+                
+                # 4. Market Fiyatı
+                market_px = get_price_func(row['ticker'])
+                if market_px <= 0: market_px = t_price # Simülasyon
+                
+                leverage = (abs(greeks['delta']) * underlying_price) / market_px if market_px > 0 else 0
+                
+                # 5. Skorlama
+                score = WarrantEngine.score_warrant(underlying_price, market_px, t_price, greeks, t_days, row['multiplier'], leverage)
+                
+                results.append({
+                    "Varant": row['ticker'],
+                    "Dayanak": row['underlying'],
+                    "Tip": row['type'],
+                    "Skor": score,
+                    "Delta": greeks['delta'],
+                    "Kaldıraç": round(leverage, 1),
+                    "Vade Gün": t_days,
+                    "Durum": "GÜVENLİ" if score > 75 else "NORMAL" if score > 50 else "RİSKLİ"
+                })
+            except: continue
+            
+        if not results: return pd.DataFrame()
+        
+        full_df = pd.DataFrame(results).sort_values(by="Skor", ascending=False)
+        return full_df.head(10) # En iyi 10 varantı paylaş

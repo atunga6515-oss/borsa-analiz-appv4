@@ -1800,6 +1800,34 @@ def main():
             else:
                 st.info("Seçili stratejiye uygun varant bulunamadı.")
 
+            # --- YENİ: VARANT STAR LIST (TOP PICKS) ---
+            st.markdown("---")
+            st.subheader("🏆 Varant Star List (Top Picks Selection)")
+            st.caption("Tüm piyasayı tarayarak Greeks ve Skor bazlı en iyi yatırım yapılabilecek varantları seçer.")
+            
+            if st.button("🌟 Tüm Varantları Tara ve Yıldız Listeyi Bul"):
+                with st.spinner("Piyasadaki tüm varantlar Black-Scholes modelinden geçiriliyor..."):
+                    all_warrants = wd.get_all_warrants()
+                    top_warrants_df = we.get_top_warrants(all_warrants, get_live_price, r_rate=risk_free_rate)
+                    
+                    if not top_warrants_df.empty:
+                        st.session_state['top_warrants'] = top_warrants_df
+                        st.success("Yıldız Liste Güncellendi!")
+                    else:
+                        st.error("Uygun varant bulunamadı.")
+            
+            if 'top_warrants' in st.session_state:
+                tw_df = st.session_state['top_warrants']
+                
+                # Stil verme
+                def style_w_star(row):
+                    styles = [''] * len(row)
+                    if row['Skor'] >= 75: styles = ['background-color: #0d5f30; color: white; font-weight: bold'] * len(row)
+                    return styles
+
+                st.dataframe(tw_df.style.apply(style_w_star, axis=1), use_container_width=True)
+                st.info("💡 **İpucu:** Skor > 75 olan varantlar hem zaman kaybı (Theta) düşük hem de dayanak varlık hareketine en duyarlı (Optimal) olanlardır.")
+
     elif mode == "🎯 20 Günlük Trader Disiplini":
         st.title("🎯 Sanal Fon Yönetimi & Psikoloji Disiplini")
         st.markdown("""

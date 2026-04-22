@@ -57,3 +57,9 @@ def update_warrant_iv(ticker, iv):
     conn.execute("UPDATE warrants SET iv=? WHERE ticker=?", (iv, ticker))
     conn.commit()
     conn.close()
+def get_all_warrants():
+    """Tüm kayıtlı varantları döndürür."""
+    conn = sqlite3.connect(DB_PATH)
+    df = pd.read_sql_query("SELECT * FROM warrants", conn)
+    conn.close()
+    return df
