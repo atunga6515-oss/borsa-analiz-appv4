@@ -7,7 +7,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from data_loader import fetch_data, get_live_price
 from indicators import (calculate_indicators, generate_signals_and_score, 
                         detect_rsi_divergence, calculate_volume_confirmation,
-                        get_market_regime, check_bottom_reversal)
+                        get_market_regime, check_bottom_reversal,
+                        calculate_vwap, check_volatility_squeeze,
+                        detect_liquidity_sweep, calculate_obv_divergence)
 from patterns import detect_candlestick_patterns
 from support_resistance import calculate_best_zones
 import trading_goal_manager as tgm
@@ -341,6 +343,34 @@ def _analyze_single_stock(sym: str, market_regime: dict = None) -> dict:
             else:
                 trend_uyum = "⚠️ Karışık"
 
+        # ==========================================
+        # QUANTUM INDICATORS (SMC, Squeeze, VWAP)
+        # ==========================================
+        # SMC / Liquidity Sweep
+        smc_res = detect_liquidity_sweep(df)
+        smc_text = smc_res['summary'] if smc_res['detected'] else "-"
+        
+        # Volatility Squeeze
+        sq_res = check_volatility_squeeze(df)
+        sq_text = "Sıkışma 🔥" if sq_res['is_squeezing'] else "Ateşlendi 🚀" if sq_res['is_firing'] else "-"
+        
+        # OBV Divergence
+        obv_res = calculate_obv_divergence(df)
+        obv_text = "Gizli Toplama 💹" if obv_res['detected'] else "-"
+        
+        # VWAP Kontrolü
+        df = calculate_vwap(df)
+        vwap_val = df['VWAP_5'].iloc[-1]
+        vwap_dist = ((display_price - vwap_val) / vwap_val) * 100
+        
+        # Alpha (Göreceli Güç)
+        alpha_text = "-"
+        if market_regime and 'xu100_5d_chg' in market_regime:
+            xu100_5d_chg = market_regime['xu100_5d_chg']
+            sym_5d = ((display_price - df['Close'].iloc[-5]) / df['Close'].iloc[-5]) * 100 if len(df) >= 5 else 0
+            alpha_val = sym_5d - xu100_5d_chg
+            alpha_text = f"{alpha_val:+.1f}%"
+
         rsi_val = df['RSI_14'].iloc[-1] if 'RSI_14' in df.columns else None
         sector = get_sector(sym)
 
@@ -370,26 +400,25 @@ def _analyze_single_stock(sym: str, market_regime: dict = None) -> dict:
             "Hisse": sym,
             "Fiyat": round(display_price, 2),
             "Değişim (%)": round(pct_change, 2),
+            "Göreceli Güç (Alpha)": alpha_text,
             "V6 Hibrit Skor": v6_hybrid_score,
-            "Adil Değer (Graham)": g_val,
-            "Graham Potansiyeli (%)": g_pot,
-            "Teknik Potansiyel": tek_skor,
-            "Temel Not": tem_skor,
-            "PD/DD": fund_data.get('pb', 0),
-            "F/K": fund_data.get('pe', 0),
-            "Temettü (%)": fund_data.get('div_yield', 0),
-            "Temel Durum": fund_data.get('status', 'Normal'),
+            "Risk/Ödül (R/R)": round(sig.get('rr_ratio', 0), 2),
+            "SMC / Stop Avı": smc_text,
+            "Sıkışma Durumu": sq_text,
+            "Hacim Diverjans": obv_text,
+            "VWAP Uzaklık": f"%{vwap_dist:.1f}",
             "Piyasa Kararı": sig['decision'],
             "Güven Skoru (PGS)": sig['pgs'],
-            "ADX": adx_text,
             "1D+1H Uyum": trend_uyum,
-            "Hacim Skoru": vol_text,
             "RSI": round(rsi_val, 1) if rsi_val and pd.notna(rsi_val) else "-",
             "Desteğe Uzaklık": dist_sup,
             "Dirence Uzaklık": dist_res,
-            "ATR (%)": tgm.calculate_atr_volatility(df)['atr_pct'],
-            "Disiplin": "✅" if tgm.calculate_atr_volatility(df)['is_suitable'] else "❌"
-
+            "Teknik Potansiyel": tek_skor,
+            "Temel Not": tem_skor,
+            "Temel Durum": fund_data.get('status', 'Normal'),
+            "PD/DD": fund_data.get('pb', 0),
+            "F/K": fund_data.get('pe', 0),
+            "Sektör": sector
         }
     except Exception:
         return None

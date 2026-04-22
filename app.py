@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 import yfinance as yf
+
+APP_VERSION = "v1.7.0"
 import requests
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -386,11 +388,12 @@ def render_login_page():
             <div class="p-header">
                 <div class="p-title">BIST Broker Terminal</div>
                 <div class="p-subtitle">AI-Powered Hybrid Analysis</div>
+                <div style="margin-top:10px; font-weight:bold; color:var(--emerald); font-size:0.8rem;">{v} PRO</div>
                 <div style="margin-top:15px; font-size:0.7rem; color:#888;">
                     <span class="live-dot"></span> LIVE MARKET DATA
                 </div>
             </div>
-        """, unsafe_allow_html=True)
+        """.format(v=APP_VERSION), unsafe_allow_html=True)
 
         with st.form("auth_form_final"):
             u_input = st.text_input("Kullanıcı Adı", placeholder="user")
@@ -444,7 +447,7 @@ def main():
     
     # Versiyon Bilgisi
     st.sidebar.markdown("---")
-    st.sidebar.caption("🏷️ **Versiyon: v1.6.0**")
+    st.sidebar.caption(f"🏷️ **Versiyon: {APP_VERSION}**")
 
     # Navigasyon
     mode = st.sidebar.radio("📁 Terminal Modülleri", [
@@ -686,10 +689,17 @@ def main():
         # Özellik 4: Özel Filtre Oluşturucu
         st.sidebar.markdown("---")
         st.sidebar.subheader("🎛️ Özel Filtre")
-        filter_option = st.sidebar.selectbox("Hazır Filtre", [
-            "Tümünü Göster", "Sadece Güçlü Al", "Sadece Al", 
-            "Sadece Sat / Güçlü Sat", "RSI < 30 (Aşırı Satım)", "RSI > 70 (Aşırı Alım)",
-            "Hacim Patlaması Olanlar", "Dipten Dönüş Olanlar", "Çift AL (1D+1H) Teyitliler"
+        filter_option = st.sidebar.selectbox("🚀 Hazır Stratejik Filtreler", [
+            "Tümünü Göster", 
+            "💎 Sadece Güçlü Al (V6 > 75)", 
+            "🔥 Squeeze (Sıkışma) Olanlar", 
+            "🚀 Squeeze Ateşlenenler",
+            "🛡️ SMC / Stop Avı Tespiti",
+            "💹 Hacim (OBV) Diverjansı",
+            "💪 Endeksten Güçlüler (Alpha > 2%)",
+            "📊 R/R Oranı > 2.5 Olanlar",
+            "Çift AL (1D+1H) Teyitliler",
+            "Hacim Patlaması Olanlar"
         ])
         
         # Piyasa Rejimi Göstergesi (BIST 100)
@@ -739,24 +749,25 @@ def main():
             screener_df = st.session_state['last_scan'].copy()
             
             # Filtreleme uygula
-            if filter_option == "Sadece Güçlü Al":
-                screener_df = screener_df[screener_df['Piyasa Kararı'] == 'Güçlü Al']
-            elif filter_option == "Sadece Al":
-                screener_df = screener_df[screener_df['Piyasa Kararı'].isin(['Al', 'Güçlü Al'])]
-            elif filter_option == "Sadece Sat / Güçlü Sat":
-                screener_df = screener_df[screener_df['Piyasa Kararı'].str.contains('Sat')]
-            elif filter_option == "RSI < 30 (Aşırı Satım)":
-                screener_df = screener_df[screener_df['RSI'] != '-']
-                screener_df = screener_df[screener_df['RSI'].astype(float) < 30]
-            elif filter_option == "RSI > 70 (Aşırı Alım)":
-                screener_df = screener_df[screener_df['RSI'] != '-']
-                screener_df = screener_df[screener_df['RSI'].astype(float) > 70]
-            elif filter_option == "Hacim Patlaması Olanlar":
-                screener_df = screener_df[screener_df['Hacim Patlaması'] != '-']
-            elif filter_option == "Dipten Dönüş Olanlar":
-                screener_df = screener_df[screener_df['Dipten Dönüş'] != '-']
+            if filter_option == "💎 Sadece Güçlü Al (V6 > 75)":
+                screener_df = screener_df[screener_df['V6 Hibrit Skor'] >= 75]
+            elif filter_option == "🔥 Squeeze (Sıkışma) Olanlar":
+                screener_df = screener_df[screener_df['Sıkışma Durumu'] == 'Sıkışma 🔥']
+            elif filter_option == "🚀 Squeeze Ateşlenenler":
+                screener_df = screener_df[screener_df['Sıkışma Durumu'] == 'Ateşlendi 🚀']
+            elif filter_option == "🛡️ SMC / Stop Avı Tespiti":
+                screener_df = screener_df[screener_df['SMC / Stop Avı'] != '-']
+            elif filter_option == "💹 Hacim (OBV) Diverjansı":
+                screener_df = screener_df[screener_df['Hacim Diverjans'] != '-']
+            elif filter_option == "💪 Endeksten Güçlüler (Alpha > 2%)":
+                def parse_alpha(x):
+                    try: return float(str(x).replace('%','')) if x != '-' else -99
+                    except: return -99
+                screener_df = screener_df[screener_df['Göreceli Güç (Alpha)'].apply(parse_alpha) >= 2.0]
+            elif filter_option == "📊 R/R Oranı > 2.5 Olanlar":
+                screener_df = screener_df[screener_df['Risk/Ödül (R/R)'] >= 2.5]
             elif filter_option == "Çift AL (1D+1H) Teyitliler":
-                screener_df = screener_df[screener_df['1D+1H Uyum'].str.contains('Çift AL')]
+                screener_df = screener_df[screener_df['1D+1H Uyum'].str.contains('Çift AL', na=False)]
             
             # Min skor filtresi
             if custom_min_score > 0:
@@ -844,10 +855,17 @@ def main():
                         elif col == 'Disiplin':
                             if '✅' in str(val): styles[i] = 'color: #00ff00; font-weight: bold; text-align: center;'
                             elif '❌' in str(val): styles[i] = 'color: #ff4c4c; text-align: center;'
+                        elif col == 'SMC / Stop Avı':
+                            if val != '-': styles[i] = 'background-color: #512e5f; color: #d4e6f1; font-weight: bold'
+                        elif col == 'Sıkışma Durumu':
+                            if '🔥' in str(val): styles[i] = 'background-color: #7b241c; color: white; font-weight: bold'
+                            elif '🚀' in str(val): styles[i] = 'background-color: #145a32; color: white; font-weight: bold'
+                        elif col == 'Göreceli Güç (Alpha)':
+                            if '+' in str(val): styles[i] = 'color: #00ff00; font-weight: bold'
+                        elif col == 'Risk/Ödül (R/R)':
+                            if float(val) >= 2.5: styles[i] = 'color: #00ff00; font-weight: bold'
+                            elif float(val) < 1.0: styles[i] = 'color: #ff4c4c'
                         elif col == '1D+1H Uyum':
-                            if 'Çift AL' in str(val): styles[i] = 'background-color: rgba(45, 106, 46, 0.4)'
-                            elif 'Çift SAT' in str(val): styles[i] = 'background-color: rgba(146, 43, 33, 0.4)'
-                        elif col == 'Hacim Skoru':
                             if isinstance(val, str) and 'Hacim Patlaması' in val: styles[i] = 'background-color: rgba(0, 102, 204, 0.4); font-weight: bold'
                         elif col == 'Dipten Dönüş':
                             if 'Dönüş' in str(val): styles[i] = 'background-color: rgba(204, 102, 0, 0.5); font-weight: bold'
