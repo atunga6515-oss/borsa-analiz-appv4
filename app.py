@@ -1657,7 +1657,7 @@ def main():
     elif mode == "🧨 Günlük Açılış Radarı (Sniper)":
         st.title("🧨 Günlük Açılış Radarı (Morning Sniper)")
         st.markdown(f"""
-        <div style="background-color: #1e1e1e; padding: 15px; border-radius: 10px; border-left: 5px solid #ff4757; margin-bottom: 20px;">
+        <div style="background-color: #1e1e1e; color: white; padding: 15px; border-radius: 10px; border-left: 5px solid #ff4757; margin-bottom: 20px;">
             <b>Göreviniz:</b> Borsa açılışında momentumu en yüksek, haber destekli ve risk/getiri oranı optimize edilmiş "Ateşlenmeye Hazır" 5 hisseyi bulmak.
         </div>
         """, unsafe_allow_html=True)
