@@ -2,7 +2,8 @@ import streamlit as st
 import pandas as pd
 import yfinance as yf
 
-APP_VERSION = "v1.7.0"
+APP_VERSION = "v1.8.0"
+from morning_sniper import get_morning_sniper_candidates
 import requests
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -459,6 +460,7 @@ def main():
         "📰 KAP ve Haberler",
         "🌟 Haber Alpha (Alpha Discovery)",
         "🏆 Stratejik Seçki (Top Picks)",
+        "🧨 Günlük Açılış Radarı (Sniper)",
         "🎯 20 Günlük Trader Disiplini",
         "🔒 Profil ve Güvenlik"
     ])
@@ -1651,6 +1653,56 @@ def main():
             else:
                 st.warning("Şu anki piyasa koşullarında net bir fiyat-haber (Alpha) ayrıcalığı bulunamadı.")
                 
+
+    elif mode == "🧨 Günlük Açılış Radarı (Sniper)":
+        st.title("🧨 Günlük Açılış Radarı (Morning Sniper)")
+        st.markdown(f"""
+        <div style="background-color: #1e1e1e; padding: 15px; border-radius: 10px; border-left: 5px solid #ff4757; margin-bottom: 20px;">
+            <b>Göreviniz:</b> Borsa açılışında momentumu en yüksek, haber destekli ve risk/getiri oranı optimize edilmiş "Ateşlenmeye Hazır" 5 hisseyi bulmak.
+        </div>
+        """, unsafe_allow_html=True)
+        
+        if st.button("🔴 CANLI RADAR TARAMASINI BAŞLAT (BIST 100)", type="primary"):
+            with st.spinner("Sniper algoritması tüm BIST 100'ü tarıyor, haberleri analiz ediyor ve sıkışmaları buluyor..."):
+                sniper_results = get_morning_sniper_candidates()
+                st.session_state['sniper_results'] = sniper_results
+                st.success(f"Analiz tamamlandı! En potansiyelli {len(sniper_results)} fırsat bulundu.")
+
+        if 'sniper_results' in st.session_state and st.session_state['sniper_results']:
+            results = st.session_state['sniper_results']
+            
+            # Kart tasarımı ile göster
+            for res in results:
+                with st.container():
+                    c1, c2, c3 = st.columns([1, 2, 1])
+                    
+                    with c1:
+                        st.markdown(f"""
+                        <div style="background-color: #111; padding: 20px; border-radius: 15px; border: 1px solid #333; text-align: center;">
+                            <h1 style="color: #ff4757; margin:0;">{res['ticker']}</h1>
+                            <div style="color: #888; font-size: 0.9rem;">Sniper Skoru</div>
+                            <h2 style="color: #26de81; margin:0;">{res['score']}</h2>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    with c2:
+                        st.markdown(f"### 🎯 İşlem Planı")
+                        st.markdown(f"**Neden:** {res['reason']}")
+                        st.info(f"📰 **Son Önemli Haber:** {res['news']}")
+                        
+                    with c3:
+                        st.markdown(f"**💰 Seviyeler**")
+                        st.markdown(f"🟢 **Giriş:** {res['entry']} ₺")
+                        st.markdown(f"🎯 **Hedef:** {res['target']} ₺ (%{res['target_pct']}+)")
+                        st.markdown(f"🛑 **Stop:** {res['stop']} ₺")
+                        
+                        if st.button(f"📥 Portföye Ekle ({res['ticker']})", key=f"add_{res['ticker']}"):
+                            pf.alis_yap(current_user, res['ticker'], 1, res['entry'], not_text="Morning Sniper sinyali.")
+                            st.toast(f"{res['ticker']} Portföye eklendi!")
+                    
+                    st.markdown("---")
+        else:
+            st.info("Henüz bir tarama yapılmadı veya açılış kriterlerine uygun (High Probability) bir fırsat bulunamadı. Taramayı başlatmak için butona basın.")
 
     elif mode == "🎯 20 Günlük Trader Disiplini":
         st.title("🎯 Sanal Fon Yönetimi & Psikoloji Disiplini")
