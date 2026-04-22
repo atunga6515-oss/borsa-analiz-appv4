@@ -75,8 +75,8 @@ def get_morning_sniper_candidates(symbol_list=None):
             return None
         return None
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-        futures = [executor.submit(analyze_for_sniper, sym) for sym in symbol_list[:100]] # BIST100 sınırlı
+    with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
+        futures = [executor.submit(analyze_for_sniper, sym) for sym in symbol_list] 
         for future in concurrent.futures.as_completed(futures):
             res = future.result()
             if res:

@@ -1662,9 +1662,16 @@ def main():
         </div>
         """, unsafe_allow_html=True)
         
-        if st.button("🔴 CANLI RADAR TARAMASINI BAŞLAT (BIST 100)", type="primary"):
-            with st.spinner("Sniper algoritması tüm BIST 100'ü tarıyor, haberleri analiz ediyor ve sıkışmaları buluyor..."):
-                sniper_results = get_morning_sniper_candidates()
+        # Tarama Kapsamı Seçicisi
+        sniper_scope = st.radio("Tarama Kapsamı Seçin", ["BIST 30", "BIST 100", "BIST Tüm"], horizontal=True)
+        
+        scope_list = BIST100_SYMBOLS
+        if sniper_scope == "BIST 30": scope_list = BIST30_SYMBOLS
+        elif sniper_scope == "BIST Tüm": scope_list = BIST_ALL_SYMBOLS
+
+        if st.button(f"🔴 CANLI {sniper_scope} TARAMASINI BAŞLAT", type="primary"):
+            with st.spinner(f"Sniper algoritması {sniper_scope} listesini tarıyor..."):
+                sniper_results = get_morning_sniper_candidates(scope_list)
                 st.session_state['sniper_results'] = sniper_results
                 st.success(f"Analiz tamamlandı! En potansiyelli {len(sniper_results)} fırsat bulundu.")
 
