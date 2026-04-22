@@ -1726,10 +1726,21 @@ def main():
         
         wd.init_warrant_db()
         
-        # --- GERÇEK VERİ GÜNCELLEME BUTONU ---
-        if st.sidebar.button("🔄 İş Varant Verilerini Güncelle", use_container_width=True):
+        # --- GERÇEK VERİ GÜNCELLEME BUTONLARI ---
+        st.sidebar.markdown("### 🔄 Veri Kaynağı")
+        if st.sidebar.button("📊 İş Varant Güncelle", use_container_width=True):
             with st.spinner("İş Varant sistemine bağlanılıyor..."):
                 msg = ws.scrape_is_varant()
+                if "BAŞARILI" in msg:
+                    st.sidebar.success(msg)
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.sidebar.error(msg)
+        
+        if st.sidebar.button("📉 Ak Varant Güncelle", use_container_width=True):
+            with st.spinner("Ak Varant sistemine bağlanılıyor..."):
+                msg = ws.scrape_ak_varant()
                 if "BAŞARILI" in msg:
                     st.sidebar.success(msg)
                     time.sleep(1)
