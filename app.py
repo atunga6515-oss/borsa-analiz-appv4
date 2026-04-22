@@ -9,6 +9,7 @@ import warrant_data as wd
 import numpy as np
 import requests
 import time
+from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from data_loader import fetch_data, get_db_stats, clear_db, get_ticker_db_info, get_live_price
 from indicators import calculate_indicators, generate_signals_and_score, get_market_regime
