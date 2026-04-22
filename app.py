@@ -6,6 +6,7 @@ APP_VERSION = "v2.0.0"
 from morning_sniper import get_morning_sniper_candidates
 from warrant_engine import WarrantEngine as we
 import warrant_data as wd
+import warrant_scraper as ws
 import numpy as np
 import requests
 import time
@@ -1724,10 +1725,25 @@ def main():
         """)
         
         wd.init_warrant_db()
-        wd.seed_mock_warrants() # Başlangıç verisi
+        
+        # --- GERÇEK VERİ GÜNCELLEME BUTONU ---
+        if st.sidebar.button("🔄 İş Varant Verilerini Güncelle", use_container_width=True):
+            with st.spinner("İş Varant sistemine bağlanılıyor..."):
+                msg = ws.scrape_is_varant()
+                if "BAŞARILI" in msg:
+                    st.sidebar.success(msg)
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.sidebar.error(msg)
 
         c1, c2 = st.columns([1, 2])
-        underlying = c1.selectbox("Dayanak Varlık Seçin", ["THYAO", "AKBNK", "EREGL", "XU030"])
+        
+        # Dinamik Dayanak Varlık Listesi
+        all_w = wd.get_all_warrants()
+        unique_underlyings = sorted(all_w['underlying'].unique().tolist()) if not all_w.empty else ["THYAO", "AKBNK", "XU030"]
+        
+        underlying = c1.selectbox("Dayanak Varlık Seçin", unique_underlyings)
         risk_free_rate = c1.number_input("Risksiz Faiz Oranı (%)", value=45.0) / 100
         
         strat_mode = st.radio("Sinyal Filtresi", ["Tümü", "🚨 Yüksek Volatilite Modu", "🛡️ Güvenli Liman Modu"], horizontal=True)
