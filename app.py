@@ -1635,20 +1635,36 @@ def main():
                 
 
     elif mode == "🎯 20 Günlük Trader Disiplini":
-        st.title("🎯 20 Günlük Trader Disiplini")
+        st.title("🎯 Sanal Fon Yönetimi & Psikoloji Disiplini")
         st.markdown("""
-        Bu modül, **matematiksel disiplin** ve **sabit kâr** mantığıyla kasanızı büyütmeyi hedefler.
-        Hedef: 20 iş gününün en az 10 gününde **%3 net kâr** yakalamak.
+        Burası sadece işlemlerinizi kaydettiğiniz yer değil, **Mental Asistanınızdır.** 
+        Maksimum kârı değil, **sürdürülebilir büyüme ve sermaye korumasını** (Position Sizing) hedefler.
         """)
+        
+        # COOLDOWN (ZORUNLU MOLA) KONTROLÜ
+        cd_status = tgm.check_cooldown_status(current_user)
+        if cd_status['is_cooldown']:
+            st.error(cd_status['message'])
+            st.markdown("""
+            <div style="background-color: #7b241c; padding: 30px; text-align: center; border-radius: 10px;">
+                <h1 style="color: white; font-size: 50px;">🛑 İşlem Yasak!</h1>
+                <h3 style="color: #f1948a;">Psikolojiniz hasar aldı. İntikam işlemleri yapmaktan kaçının.</h3>
+            </div>
+            """, unsafe_allow_html=True)
+            st.stop() # Sayfanın geri kalanını yükleme, kitlenme sağla!
+        else:
+            if cd_status['loss_count'] > 0:
+                st.warning(cd_status['message'])
 
         # --- Dashboard ---
         col1, col2, col3, col4 = st.columns(4)
         capital = col1.number_input("Başlangıç Sermayesi (TL)", min_value=1000, value=100000, step=1000)
         daily_target_pct = col2.number_input("Günlük Hedef (%)", min_value=0.1, max_value=10.0, value=3.0)
-        target_days = col3.number_input("Hedeflenen Başarı Günü", min_value=1, max_value=20, value=10)
+        risk_pct = col3.number_input("İşlem Başına Risk (%)", min_value=0.1, max_value=5.0, value=1.0, help="Sermayenizin en fazla yüzde kaçını tek işlemde kaybedebilirsiniz?")
+        target_days = col4.number_input("Hedeflenen Başarı Günü", min_value=1, max_value=20, value=20)
         
         fixed_daily_profit = (capital * daily_target_pct / 100)
-        final_goal = capital + (fixed_daily_profit * target_days)
+        final_goal = capital * (1 + (daily_target_pct / 100))**target_days # Bileşik Getiri Hesabı
         
         stats = tgm.get_trading_stats(current_user)
         current_balance = capital + stats['total_profit']
@@ -1656,118 +1672,73 @@ def main():
         
         st.markdown("---")
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("💰 Mevcut Kasa", f"{current_balance:,.0f} TL")
-        m2.metric("🎯 Final Hedefi", f"{final_goal:,.0f} TL", f"+{final_goal - capital:,.0f} TL")
-        m3.metric("✅ Başarılı Gün", f"{stats['success_days']} / {target_days}")
+        m1.metric("💰 Mevcut Bakiye", f"{current_balance:,.0f} TL")
+        m2.metric("🏆 Uzun Vade Hedefi (Bileşik)", f"{final_goal:,.0f} TL")
+        m3.metric("🔥 Kazanma Serisi (Streak)", f"{stats['streak']} Gün")
         m4.metric("📈 Win Rate", f"%{stats['win_rate']}")
         
-        st.write("**📊 İlerleme Durumu**")
-        st.progress(progress_pct / 100, text=f"Hedef Yolculuğu: {progress_pct:.1f}%")
+        st.markdown("<br>", unsafe_allow_html=True)
+        m5, m6 = st.columns(2)
+        m5.info(f"💡 **En Başarılı Stratejiniz:** {stats['best_strategy']}")
+        m6.error(f"⚠️ **En Çok Kaybettiren Duygu:** {stats['worst_emotion']}")
         
-        if progress_pct >= 100:
-            st.balloons()
-            st.success("🎊 TEBRİKLER! 20 günlük disiplin hedefinize ulaştınız. Kasanızı başarıyla büyüttünüz.")
+        st.write("**📊 20 Günlük İlerleme**")
+        st.progress(progress_pct / 100, text=f"Hedef Yolculuğu: %{progress_pct:.1f}")
 
+        # --- Pozisyon Boyutlandırma & Asistan ---
         st.markdown("---")
+        st.subheader("⚖️ Akıllı Lot ve Risk Boyutlandırma")
+        p1, p2, p3 = st.columns([1, 1, 1.5])
         
-        # --- Volatilite Bazlı Hisse Önerisi ---
-        st.subheader("🚀 Hedef Uygunluğu Olan Hisseler")
-        st.caption(f"Sadece son 10 günlük ortalama hareketi (ATR) %{daily_target_pct} ve üzeri olan, yani hedefi vurma potansiyeli yüksek hisseler.")
+        trade_sym_calc = p1.text_input("Hisse Sembolü", "THYAO")
+        stop_level = p2.number_input("Planlanan Manuel Stop Fiyatı (TL)", min_value=0.01, format="%.2f", step=0.5)
         
-        # Kullanıcının son tarama sonuçlarını session_state'de tutalım
-        if 'suitable_stocks' not in st.session_state:
-            st.session_state.suitable_stocks = []
-        if 'discipline_trade_sym' not in st.session_state:
-            st.session_state.discipline_trade_sym = ""
-
-        scan_list = BIST30_SYMBOLS
-        current_suitable = []
-        
-        if st.button("🔍 Volatilite Taramasını Başlat"):
-            prog = st.progress(0)
-            for i, sym in enumerate(scan_list):
-                v_df = fetch_data(sym, "1d", "1mo")
-                vol_data = tgm.calculate_atr_volatility(v_df, window=10)
-                if vol_data['is_suitable']:
-                    # Teknik skoru da indicators'dan alalım
-                    v_df = calculate_indicators(v_df)
-                    sig = generate_signals_and_score(v_df)
-                    current_suitable.append({
-                        "Seç": False,
-                        "Hisse": sym,
-                        "Fiyat": v_df['Close'].iloc[-1],
-                        "ATR (%)": vol_data['atr_pct'],
-                        "Teknik Skor": sig['score'],
-                        "Karar": sig['decision']
-                    })
-                prog.progress((i+1)/len(scan_list))
-            st.session_state.suitable_stocks = current_suitable
-            st.rerun()
-            
-        if st.session_state.suitable_stocks:
-            suitable_df = pd.DataFrame(st.session_state.suitable_stocks).sort_values(by="Teknik Skor", ascending=False)
-            
-            edited_df = st.data_editor(
-                suitable_df,
-                column_config={
-                    "Seç": st.column_config.CheckboxColumn("Seç", default=False),
-                    "Teknik Skor": st.column_config.ProgressColumn("Güç", format="%d", min_value=0, max_value=100)
-                },
-                width='stretch',
-                hide_index=True,
-                key="discipline_editor"
-            )
-            
-            # Seçim değiştiyse trade_sym'i güncelle
-            selected_rows = edited_df[edited_df["Seç"] == True]
-            if not selected_rows.empty:
-                new_sym = selected_rows.iloc[-1]["Hisse"]
-                if new_sym != st.session_state.discipline_trade_sym:
-                    st.session_state.discipline_trade_sym = new_sym
-                    st.rerun()
-        else:
-            if not st.session_state.suitable_stocks:
-                st.info("Hisse bulmak için yukarıdaki taramayı başlatın.")
-
-        st.markdown("---")
-        
-        # --- Günlük İşlem Kaydı ---
-        st.subheader("📝 Günlük İşlem Kaydı")
-        c1, c2, c3 = st.columns([1, 1, 1])
-        # session_state'den gelen varsayılan değer
-        trade_sym = c1.text_input("Bugün İşlem Yapılan Hisse", st.session_state.discipline_trade_sym).upper()
-        if trade_sym:
-            live_px = get_live_price(trade_sym)
-            levels = tgm.get_risk_levels(live_px, target_pct=daily_target_pct)
-            c2.info(f"🎯 Hedef: {levels['target']} ₺")
-            c3.warning(f"🛑 Stop: {levels['stop']} ₺")
-            
-            # Canlı Takip & Disiplin Uyarısı
-            pct_change = 0
-            # Basitleştirilmiş gün içi takip simülasyonu (veya son fiyat üzerinden)
-            current_px = get_live_price(trade_sym)
-            pct_change = ((current_px - live_px) / live_px) * 100
-            
-            if pct_change >= daily_target_pct:
-                st.markdown(f"""
-                <div style="background-color: #064e3b; padding: 20px; border-radius: 10px; border: 2px solid #059669; text-align: center;">
-                    <h2 style="color: #34d399; margin: 0;">✅ GÜNLÜK HEDEF TAMAMLANDI!</h2>
-                    <p style="color: white; font-size: 1.2rem;">{trade_sym} hissesinde %{pct_change:.2f} kâra ulaşıldı. <b>LÜTFEN EKRANI KAPATIN</b> ve disiplini bozmayın.</p>
+        if trade_sym_calc and stop_level > 0:
+            livepx = get_live_price(trade_sym_calc)
+            if livepx > 0 and stop_level < livepx:
+                pos_info = tgm.calculate_position_size(current_balance, risk_pct, livepx, stop_level)
+                
+                p3.markdown(f"""
+                <div style="background-color: #1e293b; padding: 15px; border-radius: 8px; border-left: 5px solid #3498db;">
+                    <b>Güncel Fiyat:</b> {livepx:,.2f} TL<br>
+                    <b>Maksimum Alınacak Lot:</b> <span style="color:#26de81; font-size:1.2rem; font-weight:bold;">{pos_info['max_shares']} Adet</span><br>
+                    <b>Yatırılacak Maksimum Tutar:</b> {pos_info['max_investment']:,.0f} TL<br>
+                    <b>Olası Zarar Tutarı (Stop Olursa):</b> <span style="color:#ff4757;">-{pos_info['actual_risk_taken']:,.0f} TL</span>
                 </div>
                 """, unsafe_allow_html=True)
-                if st.button("🏆 Başarılı Günü Kaydet"):
-                    tgm.save_daily_result(current_user, trade_sym, True, fixed_daily_profit, daily_target_pct)
-                    st.success("Başarı kaydedildi. Yarın görüşmek üzere!")
-                    st.rerun()
-            elif pct_change <= -1.5:
-                st.error(f"🛑 STOP SEVİYESİNE ULAŞILDI (%{pct_change:.2f}). Disiplin gereği pozisyonu kapatmanız önerilir.")
-                if st.button("📉 Zararlı Günü Kaydet"):
-                    tgm.save_daily_result(current_user, trade_sym, False, - (capital * 0.015), daily_target_pct)
-                    st.rerun()
+            elif stop_level >= livepx:
+                p3.warning("Stop seviyesi güncel fiyattan düşük olmalıdır.")
+        
+        # --- Günlük İşlem Günlüğü (Trade Journal) ---
+        st.markdown("---")
+        st.subheader("📝 Psikolojik İşlem Günlüğü")
+        
+        with st.form("trade_journal_form"):
+            col_f1, col_f2 = st.columns(2)
+            log_sym = col_f1.text_input("İşlem Yapılan Hisse (Örn: ASELS)").upper()
+            log_profit = col_f1.number_input("Elde Edilen Net Kâr / Zarar (TL)", step=100.0)
+            
+            strat_options = ["VWAP Ayrışması", "Squeeze (Sıkışma)", "Destek Dönüşü", "Haber/KAP", "SMC (Likidite Süpürme)", "Formasyon Kırılımı", "Diğer"]
+            emo_options = ["Nötr / Kurallara Uydum", "Kendinden Emin", "FOMO (Fırsatı Kaçırma Korkusu)", "Panik/Heyecan", "İntikam İşlemi", "Aşırı Özgüven"]
+            
+            log_strat = col_f2.selectbox("Kullanılan Strateji Nedir?", strat_options)
+            log_emo = col_f2.selectbox("Pozisyona Girerken Duygunuz Neydi?", emo_options)
+            
+            submitted = st.form_submit_button("📓 Günlüğe Kaydet")
+            if submitted and log_sym:
+                is_success = log_profit >= 0
+                tgm.save_daily_result(current_user, log_sym, is_success, log_profit, daily_target_pct, log_strat, log_emo)
+                st.success("İşlem başarıyla psikoloji günlüğüne kaydedildi!")
+                st.rerun()
 
-        with st.expander("📖 Geçmiş İşlemler"):
-            if stats['history']:
-                st.table(stats['history'])
+        # --- Gamification / Simülasyon ---
+        with st.expander("📈 Bileşik Getiri (Compounding) Haritam"):
+            comp_data = tgm.get_compounding_projection(capital, daily_target_pct, stats['success_days'], target_days)
+            st.dataframe(pd.DataFrame(comp_data).style.apply(lambda x: ['background: #064e3b' if x['Durum'] == 'Tamamlandı' else '' for i in x], axis=1), use_container_width=True)
+
+        with st.expander("📖 Geçmiş İşlemlerim ve Analizleri"):
+            if not stats['raw_df'].empty:
+                st.dataframe(stats['raw_df'][['date', 'symbol', 'is_success', 'profit_amount', 'strategy', 'emotion']].sort_values(by="date", ascending=False), use_container_width=True)
             else:
                 st.info("Henüz kayıtlı işlem bulunmuyor.")
     elif mode == "🔒 Profil ve Güvenlik":

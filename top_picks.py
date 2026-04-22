@@ -223,9 +223,9 @@ def deep_analyze_stock(sym: str, market_regime: dict = None) -> dict:
         xu100_5d_chg = market_regime['xu100_5d_chg']
         sym_5d = ((live_px - df['Close'].iloc[-5]) / df['Close'].iloc[-5]) * 100
         alpha_val = sym_5d - xu100_5d_chg
+        alpha_text = f"{alpha_val:+.1f}%"  
         if xu100_5d_chg < -1.0 and sym_5d > -0.5:
             alpha_bonus = 20
-            alpha_text = f"+{alpha_val:.1f}%"
             result["summary"] += f"\n💪 Endeksten Güçlü Ayrışma (Alpha: {alpha_text})"
     composite += alpha_bonus
 
