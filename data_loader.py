@@ -239,6 +239,16 @@ def fetch_multiple_close_prices(symbols: list, interval: str = "1d", period: str
     return result
 
 
+@st.cache_data(ttl=300)
+def fetch_weekly_data(symbol: str, period: str = "2y") -> pd.DataFrame:
+    """
+    Öncelikle Multi-Timeframe analiz (MTF) için haftalık veri çeker.
+    fetch_data altyapısını kullanarak veritabanına kaydeder/önbellekler.
+    """
+    # 2 yıl = 104 hafta. Haftalık analizler için bu periyot uygundur.
+    return fetch_data(symbol, interval="1wk", period=period)
+
+
 def get_db_stats() -> dict:
     """Veritabanı istatistiklerini döndürür (uygulama arayüzünde göstermek için)."""
     conn = _get_connection()

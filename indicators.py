@@ -4,6 +4,12 @@ import ta
 import streamlit as st
 from patterns import detect_candlestick_patterns
 
+def calculate_vwap(df: pd.DataFrame, window: int = 5) -> pd.Series:
+    """Son N günün Hacim Ağırlıklı Ortalama Fiyatını (VWAP) hesaplar."""
+    typical_price = (df['High'] + df['Low'] + df['Close']) / 3
+    vwap = (typical_price * df['Volume']).rolling(window=window).sum() / df['Volume'].rolling(window=window).sum()
+    return vwap
+
 def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
     """
     'ta' kütüphanesini kullanarak 20+ teknik indikatörü veri setine ekler.
@@ -63,6 +69,9 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
         df['ICH_span_b'] = ichimoku.ichimoku_b()
         df['ICH_base'] = ichimoku.ichimoku_base_line()
         df['ICH_conv'] = ichimoku.ichimoku_conversion_line()
+        
+        # VWAP
+        df['VWAP_5'] = calculate_vwap(df, window=5)
 
         return df
     except Exception:
@@ -121,10 +130,47 @@ def check_volatility_squeeze(df: pd.DataFrame) -> dict:
     bb_lower = df['BBL_20_2.0']
     
     is_squeeze = (bb_upper < kc_upper).iloc[-1] and (bb_lower > kc_lower).iloc[-1]
+    rsi_val = df['RSI_14'].iloc[-1] if 'RSI_14' in df.columns else 0
     
-    if is_squeeze:
-        return {"squeeze": True, "text": "⚡ Bollinger Squeeze: Sert bir hareket yaklaşıyor!"}
+    if is_squeeze and rsi_val > 50:
+        return {"squeeze": True, "text": "⚡ Bollinger Squeeze + RSI > 50: Patlamaya Hazır!"}
+    elif is_squeeze:
+        return {"squeeze": True, "text": "⚡ Bollinger Squeeze Tespit Edildi."}
     return {"squeeze": False, "text": ""}
+
+def detect_liquidity_sweep(df: pd.DataFrame, window: int = 20) -> dict:
+    """Akıllı Para (SMC) Stop Avı / Liquidity Sweep Tespiti."""
+    if len(df) < window + 2:
+        return {"detected": False, "score": 0, "text": ""}
+    
+    # Son 20 günün dip seviyesi (dün itibariyle)
+    recent_low = df['Low'].iloc[-(window+1):-1].min()
+    today = df.iloc[-1]
+    
+    # Bugün o dibin altına inmiş (Sweep) ama güçlü kapatmış (Pinbar/Spring)
+    if today['Low'] < recent_low and today['Close'] > recent_low:
+        # Kapanış, en düşük seviyeden belirgin şekilde yukarıdaysa (Gövde yukarda kapattıysa)
+        range_px = today['High'] - today['Low']
+        if range_px > 0:
+            lower_shadow = (min(today['Open'], today['Close']) - today['Low']) / range_px
+            if lower_shadow > 0.4:
+                return {"detected": True, "score": 20, "text": "🎯 Likidite Süpürme (SMC - Stop Avı) Tespit Edildi!"}
+                
+    return {"detected": False, "score": 0, "text": ""}
+
+def calculate_obv_divergence(df: pd.DataFrame, window: int = 10) -> dict:
+    """Fiyatın yatay/düşüşte, OBV'nin yüksek olmasını tespit eder (Kurumsal Toplama)."""
+    if len(df) < window or 'OBV' not in df.columns:
+        return {"detected": False, "score": 0, "text": ""}
+        
+    sub = df.tail(window)
+    price_change = (sub['Close'].iloc[-1] - sub['Close'].iloc[0]) / sub['Close'].iloc[0] * 100
+    obv_change = (sub['OBV'].iloc[-1] - sub['OBV'].iloc[0]) / abs(sub['OBV'].iloc[0]) * 100 if sub['OBV'].iloc[0] != 0 else 0
+    
+    if price_change < 1.0 and obv_change > 5.0:
+        return {"detected": True, "score": 15, "text": "🐋 OBV Diverjansı (Gizli Kurumsal Toplama Onayı)"}
+        
+    return {"detected": False, "score": 0, "text": ""}
 
 def calculate_volume_confirmation(df: pd.DataFrame, is_bear: bool = False) -> dict:
     """Hacim Onayı (Volume Confirmation). Ayı piyasasında daha sert kriter (2.5x) uygular."""
@@ -176,8 +222,11 @@ def get_market_regime(xu100_df: pd.DataFrame) -> dict:
         
         c_last = float(last['Close'])
         c_prev = float(prev['Close'])
+        c_5d_ago = float(xu100_df['Close'].iloc[-5]) if len(xu100_df) >= 5 else c_prev
         
         daily_chg = ((c_last - c_prev) / c_prev) * 100.0 if c_prev != 0 else 0.0
+        chg_5d = ((c_last - c_5d_ago) / c_5d_ago) * 100.0 if c_5d_ago != 0 else 0.0
+
         
         ema50 = float(last.get('EMA_50', 0.0))
         ema200 = float(last.get('EMA_200', 0.0))
@@ -199,11 +248,12 @@ def get_market_regime(xu100_df: pd.DataFrame) -> dict:
             "mode": regime_mode,
             "is_bear": is_bear,
             "daily_chg": round(daily_chg, 2),
+            "xu100_5d_chg": round(chg_5d, 2),
             "rsi": round(rsi, 1)
         }
     except Exception:
         # Kodun çökmesini engelleyen güvenli dönüş
-        return {"mode": "Bilinmeyen", "is_bear": False, "daily_chg": 0.0, "rsi": 50.0}
+        return {"mode": "Bilinmeyen", "is_bear": False, "daily_chg": 0.0, "xu100_5d_chg": 0.0, "rsi": 50.0}
 
 def generate_signals_and_score(df: pd.DataFrame, market_regime: dict = None, sentiment_score: float = 0.0) -> dict:
     """

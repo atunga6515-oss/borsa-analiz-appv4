@@ -1385,6 +1385,8 @@ def main():
                     "🏆 V6 Hibrit Skor": r.get('kompozit_skor', 0),
                     "F/K": r.get('pe', 0),
                     "PD/DD": r.get('pb', 0),
+                    "Göreceli Güç": r.get('alpha_text', '-'),
+                    "R/R Rasyosu": r.get('rr_ratio', 0),
                     "Temel Durum": r.get('temel_durum', 'Normal'),
                     "🛡️ Güven Skoru (PGS)": r.get('pgs', 50),
                     "Karar": r.get('karar', 'N/A'),
@@ -1403,6 +1405,11 @@ def main():
                     elif col == '🛡️ Güven Skoru (PGS)':
                         if val >= 80: styles[i] = 'color: #00ff00; font-weight: bold'
                         elif val < 50: styles[i] = 'color: #ff4c4c; font-weight: bold'
+                    elif col == 'R/R Rasyosu':
+                        if isinstance(val, (int, float)) and val >= 3.0: styles[i] = 'color: #00ff00; font-weight: bold'
+                        elif isinstance(val, (int, float)) and val < 2.0: styles[i] = 'color: #ff4c4c; font-weight: bold'
+                    elif col == 'Göreceli Güç':
+                        if '+' in str(val): styles[i] = 'color: #00ff00; font-weight: bold'
                     elif col == 'Temel Durum':
                         if 'Kelepir' in str(val): styles[i] = 'background-color: #0d5f30; color: white; font-weight: bold;'
                         elif 'Balon' in str(val): styles[i] = 'background-color: #8c1010; color: white; font-weight: bold;'

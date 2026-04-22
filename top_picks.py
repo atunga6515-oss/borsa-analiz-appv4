@@ -6,6 +6,7 @@ import xml.etree.ElementTree as ET
 import sqlite3
 import json
 import os
+import concurrent.futures
 from datetime import datetime
 from data_loader import fetch_data, get_live_price
 from indicators import (calculate_indicators, generate_signals_and_score, 
@@ -188,27 +189,77 @@ def deep_analyze_stock(sym: str, market_regime: dict = None) -> dict:
                 reversal_text = "🔥 Dipten Dönüş"
 
     # ============================================================
-    # KOMPOZİT SKOR HESAPLAMA (Geliştirilmiş Ağırlıklı)
+    # KOMPOZİT SKOR HESAPLAMA (ADAPTİF AĞIRLIKLANDIRMA)
     # ============================================================
-    # Teknik Skor:       %35 (Düşürüldü)
-    # Momentum:          %10
-    # Hacim:             %10
-    # Çoklu TF:          %10
-    # Formasyon:         %5
-    # Destek yakınlık:   %5
-    # Haber Duygusu:     %20 (Artırıldı - KAP Etkisi)
-    # Dipten Dönüş:      %10
+    if is_bear:
+        # Ayı Piyasası: Temel veriler, Destekten dönüş ve Haberler ön planda
+        composite = (
+            tech_score * 0.20 +
+            (50 + momentum_bonus) * 0.05 +
+            (50 + volume_bonus) * 0.05 +
+            (50 + tf_bonus) * 0.05 +
+            (50 + pattern_bonus) * 0.05 +
+            (50 + support_bonus) * 0.20 +
+            sent_100 * 0.20 +
+            (50 + reversal_bonus) * 0.20
+        )
+    else:
+        # Boğa Piyasası: Momentum, Hacim ve Teknik ön planda
+        composite = (
+            tech_score * 0.35 +
+            (50 + momentum_bonus) * 0.20 +
+            (50 + volume_bonus) * 0.15 +
+            (50 + tf_bonus) * 0.10 +
+            (50 + pattern_bonus) * 0.05 +
+            (50 + support_bonus) * 0.05 +
+            sent_100 * 0.05 +
+            (50 + reversal_bonus) * 0.05
+        )
 
-    composite = (
-        tech_score * 0.35 +
-        (50 + momentum_bonus) * 0.10 +
-        (50 + volume_bonus) * 0.10 +
-        (50 + tf_bonus) * 0.10 +
-        (50 + pattern_bonus) * 0.05 +
-        (50 + support_bonus) * 0.05 +
-        sent_100 * 0.20 +
-        (50 + reversal_bonus) * 0.10
-    )
+    # 11. Göreceli Güç (Alpha)
+    alpha_bonus = 0
+    alpha_text = "-"
+    if len(df) >= 5 and market_regime and 'xu100_5d_chg' in market_regime:
+        xu100_5d_chg = market_regime['xu100_5d_chg']
+        sym_5d = ((live_px - df['Close'].iloc[-5]) / df['Close'].iloc[-5]) * 100
+        alpha_val = sym_5d - xu100_5d_chg
+        if xu100_5d_chg < -1.0 and sym_5d > -0.5:
+            alpha_bonus = 20
+            alpha_text = f"+{alpha_val:.1f}%"
+            result["summary"] += f"\n💪 Endeksten Güçlü Ayrışma (Alpha: {alpha_text})"
+    composite += alpha_bonus
+
+    # 12. Risk/Getiri (R/R) Seçkisi (+ Ceza)
+    rr_ratio = 0.0
+    if zones.get('best_buy_zones') and zones.get('best_sell_zones'):
+        sup = zones['best_buy_zones'][0][1]
+        res = zones['best_sell_zones'][0][1]
+        risk = live_px - sup
+        reward = res - live_px
+        if risk > 0:
+            rr_ratio = reward / risk
+            if rr_ratio < 2.0:
+                composite -= 30
+                result["summary"] += f"\n⛔ Risk/Getiri Çok Düşük (R/R: {rr_ratio:.2f}). -30 Ceza!"
+        elif risk <= 0:
+            rr_ratio = 5.0 # Çok iyi alım yeri
+            
+    # 13. MTF VETO (Haftalık Şişme)
+    try:
+        df_1w = df.resample('W').agg({'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'})
+        if len(df_1w) > 14:
+            df_1w = calculate_indicators(df_1w)
+            rsi_1w = df_1w['RSI_14'].iloc[-1] if 'RSI_14' in df_1w.columns else 50
+            if rsi_1w > 80:
+                composite -= 30
+                result["summary"] += f"\n⛔ MTF VETO: Haftalık RSI ({rsi_1w:.1f}) Çok Şişkin. Düzeltme Riski!"
+    except Exception:
+        pass
+        
+    # AI VETO
+    if sent_100 < 20: 
+        composite -= 50
+        result["summary"] += "\n🚨 AI VETO: Kara Bulut (Çok Negatif Haberler)"
     
     # 11. Yeni Filtreler (Gölge Analizi & Overextension)
     range_px = (df['High'].iloc[-1] - df['Low'].iloc[-1])
@@ -249,6 +300,8 @@ def deep_analyze_stock(sym: str, market_regime: dict = None) -> dict:
     except Exception:
         fund_data = {"pe": 0, "pb": 0, "div_yield": 0, "fundamental_score": 50, "status": "Veri Yok"}
         tem_skor = 50
+        fund_data = {"pe": 0, "pb": 0, "div_yield": 0, "fundamental_score": 50, "status": "Veri Yok"}
+        tem_skor = 50
     
     # V6 Hibrit Skor: %60 Teknik Kompozit + %40 Temel Not
     v6_score = round((composite * 0.6) + (tem_skor * 0.4), 1)
@@ -259,6 +312,8 @@ def deep_analyze_stock(sym: str, market_regime: dict = None) -> dict:
 
     result.update({
         "fiyat": round(live_px, 2),
+        "rr_ratio": round(rr_ratio, 2) if 'rr_ratio' in locals() else 0,
+        "alpha_text": alpha_text if 'alpha_text' in locals() else "-",
         "sektor": get_sector(sym),
         "kompozit_skor": v6_score,
         "V6 Hibrit Skor": v6_score,
@@ -313,14 +368,25 @@ def find_top_picks(symbol_list: list = None, top_n: int = 5, progress_bar=None) 
     all_results = []
     total = len(symbol_list)
 
-    for idx, sym in enumerate(symbol_list):
-        res = deep_analyze_stock(sym, market_regime=market_regime)
-        if res.get('error') is None:
-            all_results.append(res)
-
-        if progress_bar:
-            progress_bar.progress((idx + 1) / total, text=f"🔬 {sym} derinlemesine inceleniyor... ({idx+1}/{total})")
+    # ThreadPoolExecutor ile paralel asenkron tarama
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        # Gelecekteki taskları başlat
+        future_to_sym = {executor.submit(deep_analyze_stock, sym, market_regime): sym for sym in symbol_list}
+        
+        completed = 0
+        for future in concurrent.futures.as_completed(future_to_sym):
+            sym = future_to_sym[future]
+            try:
+                res = future.result()
+                if res.get('error') is None:
+                    all_results.append(res)
+            except Exception as exc:
+                pass
+            
+            completed += 1
+            if progress_bar:
+                progress_bar.progress(completed / total, text=f"🔬 Asenkron Tarama: {sym} incelendi... ({completed}/{total})")
 
     # Kompozit skora göre sırala ve en iyileri döndür
-    all_results.sort(key=lambda x: x['kompozit_skor'], reverse=True)
+    all_results.sort(key=lambda x: x.get('kompozit_skor', 0), reverse=True)
     return all_results[:top_n]
