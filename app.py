@@ -1598,7 +1598,7 @@ def main():
                             f"+{pick['support_bonus']}",
                             f"+{pick['news_bonus']} (Duygu: %{pick['news_sentiment']})",
                             f"+{pick['reversal_bonus']}",
-                            f"+{pick['takas_bonus']} (Pay: %{pick['takas_ratio']:.1f} | Değ: {pick['takas_change']:+.2f})"
+                            f"+{pick.get('takas_bonus', 0)} (Pay: %{pick.get('takas_ratio', 0):.1f} | Değ: {pick.get('takas_change', 0):+.2f})"
                         ]
                     }
                     st.dataframe(pd.DataFrame(comp_data), width='stretch', hide_index=True)
