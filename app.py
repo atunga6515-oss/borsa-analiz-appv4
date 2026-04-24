@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import yfinance as yf
 
-APP_VERSION = "v2.0.0"
+APP_VERSION = "v2.2.1"
 from morning_sniper import get_morning_sniper_candidates
 from warrant_engine import WarrantEngine as we
 import warrant_data as wd
