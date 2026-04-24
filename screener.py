@@ -410,6 +410,7 @@ def _analyze_single_stock(sym: str, market_regime: dict = None) -> dict:
             "VWAP Uzaklık": f"%{vwap_dist:.1f}",
             "Piyasa Kararı": sig['decision'],
             "Güven Skoru (PGS)": sig['pgs'],
+            "ADX": round(float(last.get('ADX_14', 0)), 1),
             "1D+1H Uyum": trend_uyum,
             "RSI": round(rsi_val, 1) if rsi_val and pd.notna(rsi_val) else "-",
             "Desteğe Uzaklık": dist_sup,
