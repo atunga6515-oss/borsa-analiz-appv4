@@ -1747,6 +1747,23 @@ def main():
                     st.rerun()
                 else:
                     st.sidebar.error(msg)
+        
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("### 📁 Manuel Excel Yükle")
+        st.sidebar.info("Bot engeline takılmamak için ihraççı sitesinden indirdiğiniz Excel'i buraya yükleyebilirsiniz.")
+        export_issuer = st.sidebar.selectbox("İhraççı Seçin", ["IS VARANT", "AK VARANT"])
+        uploaded_file = st.sidebar.file_uploader(f"{export_issuer} Excel Dosyası Seç", type=['xlsx', 'xls'])
+        
+        if uploaded_file is not None:
+            if st.sidebar.button("📤 Verileri İçeri Aktar", use_container_width=True):
+                with st.spinner("Excel işleniyor..."):
+                    msg = ws.process_warrant_excel(uploaded_file, export_issuer)
+                    if "BAŞARILI" in msg:
+                        st.sidebar.success(msg)
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.sidebar.error(msg)
 
         c1, c2 = st.columns([1, 2])
         

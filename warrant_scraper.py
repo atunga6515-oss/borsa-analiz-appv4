@@ -133,3 +133,57 @@ def scrape_ak_varant():
         return f"BAŞARILI: {len(warrant_list)} Ak Varant verisi güncellendi."
     except Exception as e:
         return f"AkVarant Hatası: {str(e)}"
+
+def process_warrant_excel(uploaded_file, issuer):
+    """
+    Kullanıcının yüklediği Excel dosyasını işler ve veritabanına kaydeder.
+    """
+    try:
+        df = pd.read_excel(uploaded_file)
+        warrant_list = []
+        
+        if issuer == 'IS VARANT':
+            for _, row in df.iterrows():
+                try:
+                    ticker = str(row.get('Sembol', row.get('Varant Sembolü', ''))).strip()
+                    underlying = str(row.get('Dayanak Varlık', row.get('Dayanak', ''))).strip()
+                    raw_type = str(row.get('Tip', '')).upper()
+                    w_type = 'CALL' if 'ALIM' in raw_type or 'CALL' in raw_type else 'PUT'
+                    strike = float(row.get('Kullanım Fiyatı', row.get('Kullanım', 0)))
+                    vade = row.get('Vade Tarihi', row.get('Vade', None))
+                    expiry_date = None
+                    if isinstance(vade, datetime):
+                        expiry_date = vade.strftime('%Y-%m-%d')
+                    elif isinstance(vade, str):
+                        expiry_date = vade.split(' ')[0]
+                    multiplier = float(row.get('Çarpan', row.get('Duyarlılık', 1)))
+                    iv = float(row.get('Zımni Oynaklık', row.get('Volatility', 50)))
+                    if iv > 1: iv /= 100
+                    if ticker and underlying:
+                        warrant_list.append((ticker, underlying, w_type, strike, expiry_date, multiplier, 'IS VARANT', iv))
+                except: continue
+        elif issuer == 'AK VARANT':
+            for _, row in df.iterrows():
+                try:
+                    ticker = str(row.get('Varant Kodu', row.get('Kod', ''))).strip()
+                    underlying = str(row.get('Dayanak Varlık', row.get('Dayanak', ''))).strip()
+                    raw_type = str(row.get('Tip', '')).upper()
+                    w_type = 'CALL' if 'ALIM' in raw_type or 'CALL' in raw_type else 'PUT'
+                    strike = float(row.get('Kullanım Fiyatı', row.get('Strike', 0)))
+                    vade = row.get('Vade Tarihi', row.get('Vade', None))
+                    expiry_date = None
+                    if isinstance(vade, datetime):
+                        expiry_date = vade.strftime('%Y-%m-%d')
+                    multiplier = float(row.get('Çarpan', 1))
+                    iv = float(row.get('Zımni Oynaklık', row.get('Oynaklık', 50)))
+                    if iv > 1: iv /= 100
+                    if ticker and underlying:
+                        warrant_list.append((ticker, underlying, w_type, strike, expiry_date, multiplier, 'AK VARANT', iv))
+                except: continue
+        if not warrant_list: return "Hata: Excel formatı tanınamadı."
+        conn = sqlite3.connect(DB_PATH); cursor = conn.cursor()
+        cursor.execute(f"DELETE FROM warrants WHERE issuer = '{issuer}'")
+        cursor.executemany("INSERT INTO warrants (ticker, underlying, type, strike, expiry_date, multiplier, issuer, iv) VALUES (?,?,?,?,?,?,?,?)", warrant_list)
+        conn.commit(); conn.close()
+        return f"BAŞARILI: {len(warrant_list)} varant yüklendi."
+    except Exception as e: return f"Excel Hatası: {str(e)}"
