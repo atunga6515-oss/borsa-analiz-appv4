@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import yfinance as yf
+import os
 
 APP_VERSION = "v2.6.0"
 from morning_sniper import get_morning_sniper_candidates
