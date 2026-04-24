@@ -117,7 +117,14 @@ class WarrantEngine:
                 if underlying_price <= 0: continue
                 
                 # 2. Vade Analizi
-                expiry = datetime.strptime(row['expiry_date'], '%Y-%m-%d')
+                expiry_str = str(row['expiry_date']).strip()
+                try:
+                    expiry = datetime.strptime(expiry_str, '%Y-%m-%d')
+                except:
+                    try:
+                        expiry = datetime.strptime(expiry_str, '%d.%m.%Y')
+                    except:
+                        expiry = datetime.now() + __import__('pandas').Timedelta(days=30)
                 t_days = (expiry - datetime.now()).days
                 t_years = t_days / 365
                 

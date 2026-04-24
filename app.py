@@ -1787,7 +1787,17 @@ def main():
             analysis_results = []
             for _, row in w_df.iterrows():
                 # Hesaplamalar
-                expiry = datetime.strptime(row['expiry_date'], '%Y-%m-%d')
+                expiry_str = str(row['expiry_date']).strip()
+                try:
+                    expiry = datetime.strptime(expiry_str, '%Y-%m-%d')
+                except:
+                    try:
+                        expiry = datetime.strptime(expiry_str, '%d.%m.%Y')
+                    except:
+                        try:
+                            expiry = datetime.strptime(expiry_str.split(' ')[0], '%Y-%m-%d')
+                        except:
+                            expiry = datetime.now() + pd.Timedelta(days=30)
                 days_to_expiry = (expiry - datetime.now()).days
                 t_years = days_to_expiry / 365
                 
