@@ -13,6 +13,7 @@ from indicators import (calculate_indicators, generate_signals_and_score,
 from patterns import detect_candlestick_patterns
 from support_resistance import calculate_best_zones
 import trading_goal_manager as tgm
+from takas_engine import get_takas_data
 
 # ============================================================
 # BIST HİSSE LİSTELERİ
@@ -397,12 +398,17 @@ def _analyze_single_stock(sym: str, market_regime: dict = None) -> dict:
         if isinstance(g_val, (int, float)) and g_val > 0 and display_price > 0:
             g_pot = round(((g_val - display_price) / display_price) * 100, 1)
 
+        # Takas Verisi (Yabancı Oranı)
+        takas = get_takas_data(sym)
+        foreign_ratio = takas.get('foreign_ratio', 0.0)
+
         return {
             "Hisse": sym,
             "Fiyat": round(display_price, 2),
             "Değişim (%)": round(pct_change, 2),
             "Göreceli Güç (Alpha)": alpha_text,
             "V6 Hibrit Skor": v6_hybrid_score,
+            "Yabancı Oranı (%)": round(foreign_ratio, 1),
             "Risk/Ödül (R/R)": round(sig.get('rr_ratio', 0), 2),
             "SMC / Stop Avı": smc_text,
             "Sıkışma Durumu": sq_text,

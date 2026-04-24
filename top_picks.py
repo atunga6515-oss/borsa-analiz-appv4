@@ -16,6 +16,7 @@ from fundamental_analyzer import get_fundamental_data
 from patterns import detect_candlestick_patterns
 from support_resistance import calculate_best_zones
 from screener import get_sector, BIST30_SYMBOLS, BIST100_SYMBOLS, BIST_ALL_SYMBOLS
+from takas_engine import get_takas_data
 
 # Veritabanı Yolu
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bist_cache.db")
@@ -188,6 +189,19 @@ def deep_analyze_stock(sym: str, market_regime: dict = None) -> dict:
                 reversal_bonus = 15
                 reversal_text = "🔥 Dipten Dönüş"
 
+    # 11. Yabancı Takas Bonusu (YENİ)
+    takas_bonus = 0
+    takas = get_takas_data(sym)
+    fr_ratio = takas.get('foreign_ratio', 0)
+    fr_change = takas.get('daily_change', 0)
+    
+    if fr_ratio > 40: takas_bonus += 15
+    elif fr_ratio > 20: takas_bonus += 7
+    
+    if fr_change > 0.5: takas_bonus += 15
+    elif fr_change > 0.1: takas_bonus += 5
+    elif fr_change < -0.5: takas_bonus -= 15
+
     # ============================================================
     # KOMPOZİT SKOR HESAPLAMA (ADAPTİF AĞIRLIKLANDIRMA)
     # ============================================================
@@ -213,7 +227,8 @@ def deep_analyze_stock(sym: str, market_regime: dict = None) -> dict:
             (50 + pattern_bonus) * 0.05 +
             (50 + support_bonus) * 0.05 +
             sent_100 * 0.05 +
-            (50 + reversal_bonus) * 0.05
+            (50 + reversal_bonus) * 0.05 +
+            (50 + takas_bonus) * 0.05
         )
 
     # 11. Göreceli Güç (Alpha)
@@ -343,6 +358,9 @@ def deep_analyze_stock(sym: str, market_regime: dict = None) -> dict:
         "news_neg": len([x for x in news_list if x['score'] < 0]),
         "news_headlines": [x['title'] for x in news_list[:3]],
         "news_bonus": news_bonus,
+        "takas_ratio": fr_ratio,
+        "takas_change": fr_change,
+        "takas_bonus": takas_bonus,
         "risk_details": sig.get('risk', {}),
         "summary": sig.get('summary', '')
     })

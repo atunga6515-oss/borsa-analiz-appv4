@@ -404,18 +404,30 @@ def generate_signals_and_score(df: pd.DataFrame, ticker: str = "", market_regime
             if dist_ema20 > 0.12: pgs_score -= (dist_ema20 - 0.12) * 200
             if rsi_val > 65: pgs_score -= (rsi_val - 65) * 1.5
             
-            # Takas Teyidi (Yabancı Payı ve Değişim Modeli)
+            # Takas Teyidi (Yabancı Payı Teyidi)
             if ticker:
                 takas = get_takas_data(ticker)
                 fr_ratio = takas.get('foreign_ratio', 0)
-                d_chg = takas.get('daily_change', 0)
+                fr_change = takas.get('daily_change', 0)
                 
-                if fr_ratio > 25.0 and d_chg > 0:
-                    pgs_score += 10 # Ciddi Yabancı Takas güvencesi var
-                    summary.append(f"🏦 Takas Teyidi Pozitif: Yabancı Payı (%{fr_ratio:.1f}) Artıyor (+%{d_chg:.2f})")
-                elif d_chg < -1.0:
-                    pgs_score -= 10 # Yabancı çıkışı
-                    summary.append(f"⚠️ Takas Uyarı: Yabancı çıkışı var (-%{abs(d_chg):.2f})")
+                # Oran Bazlı Puanlar
+                if fr_ratio > 40.0:
+                    pgs_score += 10 # Çok yüksek yabancı payı
+                    summary.append(f"🏦 Takas Teyidi: Yüksek Yabancı Payı (%{fr_ratio:.1f}).")
+                elif fr_ratio > 20.0:
+                    pgs_score += 4  # Orta düzey yabancı ilgisi
+                    summary.append(f"🏦 Takas Teyidi: Belirgin Yabancı Payı (%{fr_ratio:.1f}).")
+                
+                # Değişim Bazlı Bonuslar (Yabancı Girişi)
+                if fr_change > 0.5:
+                    pgs_score += 15
+                    summary.append(f"🔥 Yabancı Alımı: Çok Güçlü Giriş (+%{fr_change:.2f})")
+                elif fr_change > 0.1:
+                    pgs_score += 7
+                    summary.append(f"✅ Yabancı Alımı: Pozitif Trend (+%{fr_change:.2f})")
+                elif fr_change < -0.5:
+                    pgs_score -= 10
+                    summary.append(f"⚠️ Yabancı Satışı: Belirgin Çıkış (%{fr_change:.2f})")
             
             pgs_score = round(max(0, min(100, pgs_score)), 1)
 

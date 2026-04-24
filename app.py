@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import yfinance as yf
 
-APP_VERSION = "v2.5.0"
+APP_VERSION = "v2.6.0"
 from morning_sniper import get_morning_sniper_candidates
 # warrant modülleri devre dışı
 # from warrant_engine import WarrantEngine as we
@@ -1542,7 +1542,7 @@ def main():
                     st.markdown("---")
                     st.write("**⚙️ Teknik Detaylar (Bonus Puanlar):**")
                     comp_data = {
-                        "Bileşen": ["📈 Momentum", "🌊 Hacim", "⏰ Çoklu TF", "🕯️ Formasyon", "🛡️ Destek", "📰 Haber", "🔥 Dipten Dönüş"],
+                        "Bileşen": ["📈 Momentum", "🌊 Hacim", "⏰ Çoklu TF", "🕯️ Formasyon", "🛡️ Destek", "📰 Haber", "🔥 Dipten Dönüş", "🏦 Yabancı Takas"],
                         "Bonus Puan": [
                             f"+{pick['momentum_bonus']}",
                             f"+{pick['volume_bonus']}",
@@ -1550,7 +1550,8 @@ def main():
                             f"+{pick['pattern_bonus']}",
                             f"+{pick['support_bonus']}",
                             f"+{pick['news_bonus']} (Duygu: %{pick['news_sentiment']})",
-                            f"+{pick['reversal_bonus']}"
+                            f"+{pick['reversal_bonus']}",
+                            f"+{pick['takas_bonus']} (Pay: %{pick['takas_ratio']:.1f} | Değ: {pick['takas_change']:+.2f})"
                         ]
                     }
                     st.dataframe(pd.DataFrame(comp_data), width='stretch', hide_index=True)
