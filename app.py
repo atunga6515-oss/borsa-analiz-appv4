@@ -533,9 +533,47 @@ def main():
             live_px = df['Close'].iloc[-1]
             sr_data = calculate_best_zones(df)
             
+            # Hisse adı ve günlük değişimi çek
+            stock_name = sym.upper()
+            daily_change = 0.0
+            daily_change_pct = 0.0
+            try:
+                t = yf.Ticker(sym + ".IS")
+                info = t.info
+                stock_name = info.get('shortName', info.get('longName', sym.upper()))
+                if len(df) >= 2:
+                    prev_close = float(df['Close'].iloc[-2])
+                    daily_change = live_px - prev_close
+                    daily_change_pct = (daily_change / prev_close) * 100 if prev_close > 0 else 0
+            except Exception:
+                if len(df) >= 2:
+                    prev_close = float(df['Close'].iloc[-2])
+                    daily_change = live_px - prev_close
+                    daily_change_pct = (daily_change / prev_close) * 100 if prev_close > 0 else 0
+
+            chg_color = "#26de81" if daily_change >= 0 else "#ff4757"
+            chg_arrow = "▲" if daily_change >= 0 else "▼"
+            chg_sign = "+" if daily_change >= 0 else ""
+            
             c1, c2 = st.columns([1.2, 2])
             with c1:
-                st.markdown(f"### 🛡️ {sym.upper()} Hibrit Profil")
+                # Premium Hisse Başlık Kartı
+                st.markdown(f"""
+                    <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 20px; border-radius: 12px; border: 1px solid rgba(74,222,128,0.2); margin-bottom: 15px;">
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <div style="background: rgba(74,222,128,0.15); padding: 8px 14px; border-radius: 8px;">
+                                <span style="font-size: 1.6rem; font-weight: 900; color: #4ade80;">{sym.upper()}</span>
+                            </div>
+                            <div>
+                                <div style="color: #94a3b8; font-size: 0.85rem; font-weight: 600;">{stock_name}</div>
+                            </div>
+                        </div>
+                        <div style="margin-top: 12px; display: flex; align-items: baseline; gap: 10px;">
+                            <span style="font-size: 2rem; font-weight: 900; color: white;">{live_px:,.2f} ₺</span>
+                            <span style="font-size: 1rem; font-weight: 700; color: {chg_color};">{chg_arrow} {chg_sign}{daily_change:,.2f} ({chg_sign}{daily_change_pct:.2f}%)</span>
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
                 
                 # --- PREMIUM STYLED METRICS ---
                 decision_label = res.get('decision', 'N/A')
