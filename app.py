@@ -3,7 +3,7 @@ import pandas as pd
 import yfinance as yf
 import os
 
-APP_VERSION = "v2.6.0"
+APP_VERSION = "v2.6.1"
 from morning_sniper import get_morning_sniper_candidates
 # warrant modülleri devre dışı
 # from warrant_engine import WarrantEngine as we
