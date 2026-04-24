@@ -138,9 +138,26 @@ def process_warrant_excel(uploaded_file, issuer):
     """
     Kullanıcının yüklediği Excel dosyasını işler ve veritabanına kaydeder.
     Akıllı sütun eşleme ile farklı formatlardaki dosyaları da tanır.
+    İş Varant formatı: ilk 3 satır başlık/tarih, 4. satır sütun isimleri.
     """
     try:
-        df = pd.read_excel(uploaded_file)
+        # Önce normal oku
+        df = pd.read_excel(uploaded_file, header=0)
+        cols = [str(c).strip() for c in df.columns.tolist()]
+        
+        # Eğer ilk sütun "ENDEKS", "HİSSE" vb. ise başlık satırları var demektir
+        # Gerçek başlıkları bulmak için satırları tara
+        header_row = 0
+        for i, row_vals in df.iterrows():
+            row_str = [str(v).strip() for v in row_vals.values]
+            if any('Sembol' in s or 'Varant' in s for s in row_str):
+                header_row = i + 1  # +1 çünkü header=0 ile okuduk
+                break
+        
+        if header_row > 0:
+            uploaded_file.seek(0)  # Dosyayı başa sar
+            df = pd.read_excel(uploaded_file, header=header_row)
+        
         cols = [str(c).strip() for c in df.columns.tolist()]
         df.columns = cols
         
@@ -152,13 +169,13 @@ def process_warrant_excel(uploaded_file, issuer):
                         return c
             return default
 
-        col_ticker = find_col(['Sembol', 'Varant Kodu', 'Kod', 'Symbol', 'Varant'])
-        col_underlying = find_col(['Dayanak', 'D.Varlik', 'D.V.', 'Underlying'])
+        col_ticker = find_col(['Sembol', 'Varant Kodu', 'Kod', 'Symbol'])
+        col_underlying = find_col(['D.Varl', 'Dayanak', 'Underlying'])
         col_type = find_col(['Tip', 'Type', 'Tur'])
-        col_strike = find_col(['Kullanim', 'Kullanım', 'Strike'])
+        col_strike = find_col(['Kul.F', 'Kullan', 'Strike'])
         col_expiry = find_col(['Vade', 'Maturity', 'Son'])
-        col_multiplier = find_col(['Carpan', 'Çarpan', 'Duyarlilik', 'Duyarlılık', 'Ratio', 'Conversion'])
-        col_iv = find_col(['Oynaklik', 'Oynaklık', 'Volatil', 'IV', 'Zimni'])
+        col_multiplier = find_col(['Carpan', 'Çarpan', 'Duyarl', 'Ratio', 'Conversion'])
+        col_iv = find_col(['Oynakl', 'Volatil', 'IV', 'Zimni'])
 
         if not col_ticker or not col_underlying:
             return f"Hata: Sütunlar tanınamadı. Dosyadaki sütunlar: {cols}"
