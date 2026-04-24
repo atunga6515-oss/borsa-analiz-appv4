@@ -3,6 +3,9 @@ import streamlit as st
 import sqlite3
 import os
 from datetime import datetime
+import pytz
+
+TR_TZ = pytz.timezone("Europe/Istanbul")
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from data_loader import fetch_data, get_live_price
 from indicators import (calculate_indicators, generate_signals_and_score, 
@@ -183,7 +186,7 @@ def save_scan_results(results_df: pd.DataFrame, username: str):
     if results_df.empty:
         return
     conn = _get_scan_conn()
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = datetime.now(TR_TZ).strftime("%Y-%m-%d")
     # Bugünün eski kayıtlarını sil (her taramada güncelle)
     conn.execute("DELETE FROM scan_history WHERE scan_date=? AND username=?", (today, username))
     for _, row in results_df.iterrows():
@@ -246,9 +249,8 @@ def add_to_watchlist(username: str, ticker: str, note: str = ""):
     try:
         # User bazlı unique kontrolü için INSERT OR IGNORE yerine elle kontrol veya farklı şema gerekebilir.
         # Basitlik için username+ticker bazlı siliyoruz önce (varsa güncelleme gibi).
-        conn.execute("DELETE FROM watchlist WHERE username=? AND ticker=?", (username, ticker))
         conn.execute("INSERT INTO watchlist (username, ticker, added_date, note) VALUES (?,?,?,?)",
-                      (username, ticker, datetime.now().strftime("%Y-%m-%d %H:%M"), note))
+                      (username, ticker, datetime.now(TR_TZ).strftime("%Y-%m-%d %H:%M"), note))
         conn.commit()
     except Exception:
         pass

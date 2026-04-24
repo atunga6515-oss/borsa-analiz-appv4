@@ -4,8 +4,16 @@ import sqlite3
 import os
 import requests
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import streamlit as st
+import pytz
+
+# Timezone Ayarı
+TR_TZ = pytz.timezone("Europe/Istanbul")
+
+def get_istanbul_now():
+    """Türkiye yerel saatini döndürür (BIST seansları için kritik)."""
+    return datetime.now(TR_TZ)
 
 # Veritabanı dosyası uygulama dizininde tutulur
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bist_cache.db")
@@ -210,8 +218,8 @@ def fetch_data(symbol: str, interval: str = "1d", period: str = "1y") -> pd.Data
         # DB'de yeterli geçmiş veri var. Sadece son güncellemeleri alalım.
         last_date = _get_last_date_in_db(ticker, interval)
         if last_date:
-            last_dt = datetime.strptime(last_date, "%Y-%m-%d")
-            today = datetime.now()
+            last_dt = datetime.strptime(last_date, "%Y-%m-%d").replace(tzinfo=TR_TZ)
+            today = get_istanbul_now()
             
             # 1 günden fazla fark varsa yeni günleri çek
             if (today - last_dt).days >= 1:
@@ -303,7 +311,7 @@ def auto_cleanup_db(days: int = 30):
     """30 günden eski tarama geçmişini otomatik temizler."""
     try:
         conn = sqlite3.connect(DB_PATH)
-        cutoff_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+        cutoff_date = (get_istanbul_now() - timedelta(days=days)).strftime("%Y-%m-%d")
         # scan_history tablosu screener.py'de oluşturuluyor, burada hata vermemesi için IF EXISTS kullanalım
         conn.execute(f"DELETE FROM scan_history WHERE scan_date < '{cutoff_date}'")
         conn.commit()

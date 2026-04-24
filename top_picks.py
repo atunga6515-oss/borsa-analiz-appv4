@@ -8,6 +8,9 @@ import json
 import os
 import concurrent.futures
 from datetime import datetime
+import pytz
+
+TR_TZ = pytz.timezone("Europe/Istanbul")
 from data_loader import fetch_data, get_live_price
 from indicators import (calculate_indicators, generate_signals_and_score, 
                         calculate_volume_confirmation, check_bottom_reversal, get_market_regime)
@@ -39,7 +42,7 @@ def save_top_picks_history(username: str, results: list):
     if not results:
         return
     conn = _get_db_conn()
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+    now_str = datetime.now(TR_TZ).strftime("%Y-%m-%d %H:%M")
     conn.execute(
         "INSERT INTO top_picks_history (username, run_date, results_json) VALUES (?, ?, ?)",
         (username, now_str, json.dumps(results))

@@ -4,8 +4,11 @@ import re
 import os
 import sqlite3
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+import pytz
 from io import StringIO
+
+TR_TZ = pytz.timezone("Europe/Istanbul")
 
 # Veritabanı dosyası uygulamayla aynı dizinde (bist_cache.db)
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bist_cache.db")
@@ -76,7 +79,7 @@ def _get_connection():
     return conn
 
 def update_all_takas():
-    today = datetime.now().strftime('%Y-%m-%d')
+    today = datetime.now(TR_TZ).strftime('%Y-%m-%d')
     conn = _get_connection()
     try:
         # Bugünün verisi zaten var mı?
@@ -108,7 +111,7 @@ def update_all_takas():
         conn.close()
 
 def get_takas_data(ticker):
-    today = datetime.now().strftime('%Y-%m-%d')
+    today = datetime.now(TR_TZ).strftime('%Y-%m-%d')
     conn = _get_connection()
     try:
         cur = conn.execute("SELECT foreign_ratio, daily_change FROM takas_data WHERE ticker=? AND date=?", (ticker, today))

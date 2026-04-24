@@ -12,6 +12,8 @@ import numpy as np
 import requests
 import time
 from datetime import datetime
+import pytz
+TR_TZ = pytz.timezone("Europe/Istanbul")
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from data_loader import fetch_data, get_db_stats, clear_db, get_ticker_db_info, get_live_price
 from indicators import calculate_indicators, generate_signals_and_score, get_market_regime
@@ -497,6 +499,12 @@ def main():
             st.cache_data.clear()
             st.success("Veritabanı temizlendi!")
             st.rerun()
+
+        # Ephemeral Storage Uyarısı (Streamlit Cloud için)
+        if os.name == 'posix': # Linux/Unix ortamı
+            st.warning("⚠️ **Bulut Ortamı Saptandı:** SQLite veritabanı platform tarafından her deploy sonrasında sıfırlanabilir. Kalıcılık için harici bir DB (Supabase vb.) önerilir.")
+        
+        st.info(f"🕒 **Sistem Saati (TR):** {datetime.now(TR_TZ).strftime('%H:%M:%S')}")
 
     
 

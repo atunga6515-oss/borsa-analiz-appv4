@@ -5,9 +5,12 @@ import urllib.parse
 import xml.etree.ElementTree as ET
 import json
 from google import genai
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import email.utils
 import math
+import pytz
+
+TR_TZ = pytz.timezone("Europe/Istanbul")
 
 # Gemini API Yapılandırması (Yeni SDK - google-genai)
 def _get_client():
@@ -123,7 +126,7 @@ def get_sentiment_summary(ticker):
     analyzed_list = []
     total_weighted_score = 0
     total_weight = 0
-    now = datetime.now(timezone.utc)
+    now = datetime.now(TR_TZ)
     
     if ai_results:
         # AI Başarılı
@@ -131,9 +134,10 @@ def get_sentiment_summary(ticker):
             ai_data = next((x for x in ai_results if x.get('index') == i+1), None)
             if ai_data:
                 try:
-                    pub_date = email.utils.parsedate_to_datetime(item['date'])
                     if pub_date.tzinfo is None:
                         pub_date = pub_date.replace(tzinfo=timezone.utc)
+                    # Tüm tarihleri karşılaştırma için Istanbul saatine çevir
+                    pub_date = pub_date.astimezone(TR_TZ)
                     days_old = (now - pub_date).days
                     date_str = pub_date.strftime("%d.%m.%Y")
                     
@@ -176,7 +180,10 @@ def get_sentiment_summary(ticker):
             
             try:
                 pub_date = email.utils.parsedate_to_datetime(item['date'])
-                days_old = (now - pub_date.replace(tzinfo=timezone.utc)).days
+                if pub_date.tzinfo is None:
+                    pub_date = pub_date.replace(tzinfo=timezone.utc)
+                pub_date = pub_date.astimezone(TR_TZ)
+                days_old = (now - pub_date).days
                 date_str = pub_date.strftime("%d.%m.%Y")
                 
                 if days_old > 15:
