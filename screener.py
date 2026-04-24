@@ -149,7 +149,13 @@ def filter_by_sector(symbol_list: list, sector: str) -> list:
 SCAN_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bist_cache.db")
 
 def _get_scan_conn():
-    conn = sqlite3.connect(SCAN_DB_PATH)
+    conn = sqlite3.connect(SCAN_DB_PATH, timeout=30)
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+    except:
+        pass
+        
     conn.execute("""
         CREATE TABLE IF NOT EXISTS scan_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -274,16 +280,12 @@ def _analyze_single_stock(sym: str, market_regime: dict = None) -> dict:
         df = calculate_indicators(df)
         last = df.iloc[-1]
         sig = generate_signals_and_score(df, ticker=sym, market_regime=market_regime)
+        if sig.get('decision') == 'Hata':
+             return None
         
-        # Canlı Fiyat & Değişim
-        live_px = get_live_price(sym)
-        if live_px > 0 and len(df) >= 2:
-            prev_close = df['Close'].iloc[-2]
-            pct_change = ((live_px - prev_close) / prev_close) * 100
-            display_price = live_px
-        else:
-            display_price = df['Close'].iloc[-1]
-            pct_change = ((df['Close'].iloc[-1] - df['Close'].iloc[-2]) / df['Close'].iloc[-2]) * 100 if len(df)>=2 else 0
+        # Fiyat & Değişim (Performans için geçmiş veriden alıyoruz)
+        display_price = df['Close'].iloc[-1]
+        pct_change = ((df['Close'].iloc[-1] - df['Close'].iloc[-2]) / df['Close'].iloc[-2]) * 100 if len(df) >= 2 else 0
 
         # Hacim Analizi (Yeni - Detaylı)
         vol_conf = calculate_volume_confirmation(df, is_bear=market_regime['is_bear'] if market_regime else False)
@@ -359,8 +361,7 @@ def _analyze_single_stock(sym: str, market_regime: dict = None) -> dict:
         obv_text = "Gizli Toplama 💹" if obv_res['detected'] else "-"
         
         # VWAP Kontrolü
-        df = calculate_vwap(df)
-        vwap_val = df['VWAP_5'].iloc[-1]
+        vwap_val = df['VWAP_5'].iloc[-1] if 'VWAP_5' in df.columns else display_price
         vwap_dist = ((display_price - vwap_val) / vwap_val) * 100
         
         # Alpha (Göreceli Güç)
@@ -420,9 +421,8 @@ def _analyze_single_stock(sym: str, market_regime: dict = None) -> dict:
             "F/K": fund_data.get('pe', 0),
             "Sektör": sector
         }
-    except Exception:
+    except Exception as e:
         return None
-
 
 # ============================================================
 # ANA TARAYICI FONKSİYONU (Paralel + Sektör + Geçmiş Kayıt)
@@ -451,11 +451,11 @@ def run_screener(symbol_list: list, username: str, progress_bar=None, max_worker
                 result = future.result()
                 if result is not None:
                     results.append(result)
+                
+                if progress_bar:
+                    progress_bar.progress(completed / total, text=f"{sym} tarandı ({completed}/{total})")
             except Exception:
                 pass
-            
-            if progress_bar:
-                progress_bar.progress(completed / total, text=f"{sym} tarandı ({completed}/{total})")
             
     if not results:
         return pd.DataFrame()

@@ -8,7 +8,15 @@ import numpy as np
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bist_cache.db")
 
 def _get_connection():
-    conn = sqlite3.connect(DB_PATH)
+    # Çoklu thread erişimi için timeout değerini artırıyoruz
+    conn = sqlite3.connect(DB_PATH, timeout=30)
+    # Performans ve eşzamanlılık için WAL modunu açıyoruz
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+    except:
+        pass
+        
     conn.execute("""
         CREATE TABLE IF NOT EXISTS takas_data (
             ticker TEXT NOT NULL,
@@ -45,24 +53,23 @@ def fetch_and_save_takas(ticker):
     """
     today = datetime.now().strftime('%Y-%m-%d')
     conn = _get_connection()
-    
-    # Veritabanında bugün için kayıt var mı?
-    cur = conn.execute("SELECT foreign_ratio, daily_change FROM takas_data WHERE ticker=? AND date=?", (ticker, today))
-    row = cur.fetchone()
-    
-    if row:
-        return {'foreign_ratio': row[0], 'daily_change': row[1]}
+    try:
+        # Veritabanında bugün için kayıt var mı?
+        cur = conn.execute("SELECT foreign_ratio, daily_change FROM takas_data WHERE ticker=? AND date=?", (ticker, today))
+        row = cur.fetchone()
         
-    # --- BURAYA GERÇEK API ENTEGRASYONU GELECEK ---
-    # Şimdilik mock veri kullanıyoruz
-    foreign_ratio, daily_change = _fetch_takas_mock(ticker, today)
-    
-    conn.execute("INSERT OR REPLACE INTO takas_data (ticker, date, foreign_ratio, daily_change) VALUES (?, ?, ?, ?)",
-                 (ticker, today, foreign_ratio, daily_change))
-    conn.commit()
-    conn.close()
-    
-    return {'foreign_ratio': foreign_ratio, 'daily_change': daily_change}
+        if row:
+            return {'foreign_ratio': row[0], 'daily_change': row[1]}
+            
+        # Mock veri üret
+        foreign_ratio, daily_change = _fetch_takas_mock(ticker, today)
+        
+        conn.execute("INSERT OR REPLACE INTO takas_data (ticker, date, foreign_ratio, daily_change) VALUES (?, ?, ?, ?)",
+                    (ticker, today, foreign_ratio, daily_change))
+        conn.commit()
+        return {'foreign_ratio': foreign_ratio, 'daily_change': daily_change}
+    finally:
+        conn.close()
 
 def get_takas_data(ticker):
     """

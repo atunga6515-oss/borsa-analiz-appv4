@@ -104,44 +104,69 @@ def detect_rsi_divergence(df: pd.DataFrame, window: int = 30) -> dict:
     if len(p_peaks) >= 2:
         i1, i2 = p_peaks[-2], p_peaks[-1]
         if prices_h[i2] > prices_h[i1] and rsis[i2] < rsis[i1]:
-            return {"type": "Negatif", "bonus": -20, "text": "⚠️ Negatif Uyumsuzluk (Zirve Yorulması)"}
+            return {"type": "Negatif", "bonus": -20, "summary": "⚠️ Negatif Uyumsuzluk (Zirve Yorulması)"}
 
     # 2. Pozitif Uyumsuzluk (Bullish)
     p_troughs = find_troughs(prices_l)
     if len(p_troughs) >= 2:
         i1, i2 = p_troughs[-2], p_troughs[-1]
         if prices_l[i2] < prices_l[i1] and rsis[i2] > rsis[i1]:
-            return {"type": "Pozitif", "bonus": 20, "text": "🔥 Pozitif Uyumsuzluk (Dipte Alım Gücü)"}
+            return {"type": "Pozitif", "bonus": 20, "summary": "🔥 Pozitif Uyumsuzluk (Dipte Alım Gücü)"}
                 
-    return {"type": "Normal", "bonus": 0, "text": ""}
+    return {"type": "Normal", "bonus": 0, "summary": ""}
 
 def check_volatility_squeeze(df: pd.DataFrame) -> dict:
-    """Bollinger Bantları Keltner Kanallarının içine girerse Squeeze (Sıkışma) vardır."""
-    if len(df) < 20 or 'BBU_20_2.0' not in df.columns:
-        return {"squeeze": False, "text": ""}
-    
-    # Keltner Channel hesapla (Basit)
+    """Bollinger Bantları Keltner Kanallarının içine girerse Squeeze (Sıkışma) vardır.
+    Ateşlenme (Firing), bantların tekrar açılmaya başlamasıdır.
+    """
+    if len(df) < 21:
+        return {"is_squeezing": False, "is_firing": False, "summary": ""}
+
+    # Gerekli sütunların varlığını kontrol et
+    required = ['BBU_20_2.0', 'BBL_20_2.0', 'ATRr_14', 'EMA_20']
+    if not all(col in df.columns for col in required):
+        return {"is_squeezing": False, "is_firing": False, "summary": ""}
+
+    # 1. Bollinger Bantları (20, 2)
+    bb_upper = df['BBU_20_2.0']
+    bb_lower = df['BBL_20_2.0']
+
+    # 2. Keltner Kanalları (20, 1.5)
     atr = df['ATRr_14']
     ema20 = df['EMA_20']
     kc_upper = ema20 + (1.5 * atr)
     kc_lower = ema20 - (1.5 * atr)
+
+    # Sıkışma Kontrolü (BB, KC içindeyse)
+    squeeze_series = (bb_upper < kc_upper) & (bb_lower > kc_lower)
+    is_squeezing = squeeze_series.iloc[-1]
     
-    bb_upper = df['BBU_20_2.0']
-    bb_lower = df['BBL_20_2.0']
+    # Ateşlenme (Firing) Kontrolü
+    # Eğer dün sıkışma vardıysa ve bugün bantlar dışarı çıktıysa firing (patlama) olur.
+    is_firing = False
+    if len(squeeze_series) >= 2:
+        if squeeze_series.iloc[-2] == True and squeeze_series.iloc[-1] == False:
+            is_firing = True
+
+    rsi_val = df['RSI_14'].iloc[-1] if 'RSI_14' in df.columns else 50
     
-    is_squeeze = (bb_upper < kc_upper).iloc[-1] and (bb_lower > kc_lower).iloc[-1]
-    rsi_val = df['RSI_14'].iloc[-1] if 'RSI_14' in df.columns else 0
-    
-    if is_squeeze and rsi_val > 50:
-        return {"squeeze": True, "text": "⚡ Bollinger Squeeze + RSI > 50: Patlamaya Hazır!"}
-    elif is_squeeze:
-        return {"squeeze": True, "text": "⚡ Bollinger Squeeze Tespit Edildi."}
-    return {"squeeze": False, "text": ""}
+    status_text = ""
+    if is_firing:
+        status_text = "🚀 Ateşlendi / Patlama Başladı!"
+    elif is_squeezing:
+        status_text = "⚡ Sıkışma Var (Patlama Bekleniyor)"
+        if rsi_val > 55: status_text += " + RSI Pozitif"
+        
+    return {
+        "is_squeezing": is_squeezing,
+        "is_firing": is_firing,
+        "summary": status_text
+    }
 
 def detect_liquidity_sweep(df: pd.DataFrame, window: int = 20) -> dict:
     """Akıllı Para (SMC) Stop Avı / Liquidity Sweep Tespiti."""
     if len(df) < window + 2:
-        return {"detected": False, "score": 0, "text": ""}
+        return {"detected": False, "score": 0, "summary": ""}
     
     # Son 20 günün dip seviyesi (dün itibariyle)
     recent_low = df['Low'].iloc[-(window+1):-1].min()
@@ -154,9 +179,9 @@ def detect_liquidity_sweep(df: pd.DataFrame, window: int = 20) -> dict:
         if range_px > 0:
             lower_shadow = (min(today['Open'], today['Close']) - today['Low']) / range_px
             if lower_shadow > 0.4:
-                return {"detected": True, "score": 20, "text": "🎯 Likidite Süpürme (SMC - Stop Avı) Tespit Edildi!"}
+                return {"detected": True, "score": 20, "summary": "🎯 Likidite Süpürme (SMC - Stop Avı) Tespit Edildi!"}
                 
-    return {"detected": False, "score": 0, "text": ""}
+    return {"detected": False, "score": 0, "summary": ""}
 
 def calculate_obv_divergence(df: pd.DataFrame, window: int = 10) -> dict:
     """Fiyatın yatay/düşüşte, OBV'nin yüksek olmasını tespit eder (Kurumsal Toplama)."""
@@ -168,9 +193,9 @@ def calculate_obv_divergence(df: pd.DataFrame, window: int = 10) -> dict:
     obv_change = (sub['OBV'].iloc[-1] - sub['OBV'].iloc[0]) / abs(sub['OBV'].iloc[0]) * 100 if sub['OBV'].iloc[0] != 0 else 0
     
     if price_change < 1.0 and obv_change > 5.0:
-        return {"detected": True, "score": 15, "text": "🐋 OBV Diverjansı (Gizli Kurumsal Toplama Onayı)"}
+        return {"detected": True, "score": 15, "summary": "🐋 OBV Diverjansı (Gizli Kurumsal Toplama Onayı)"}
         
-    return {"detected": False, "score": 0, "text": ""}
+    return {"detected": False, "score": 0, "summary": ""}
 
 def calculate_volume_confirmation(df: pd.DataFrame, is_bear: bool = False) -> dict:
     """Hacim Onayı (Volume Confirmation). Ayı piyasasında daha sert kriter (2.5x) uygular."""
@@ -204,11 +229,11 @@ def check_bottom_reversal(df: pd.DataFrame) -> dict:
     hammer_cond = "Çekiç" in p_res.get('summary', '')
     
     if rsi_cond and bb_cond and hammer_cond:
-        return {"detected": True, "score": 30, "text": "🔥 Gelişmiş Dipten Dönüş (RSI+BB+Pattern)"}
+        return {"detected": True, "score": 30, "summary": "🔥 Gelişmiş Dipten Dönüş (RSI+BB+Pattern)"}
     elif rsi_cond and bb_cond:
-        return {"detected": True, "score": 15, "text": "🛡️ Güçlü Destek Dönüşü (RSI+BB)"}
+        return {"detected": True, "score": 15, "summary": "🛡️ Güçlü Destek Dönüşü (RSI+BB)"}
         
-    return {"detected": False, "score": 0}
+    return {"detected": False, "score": 0, "summary": ""}
 
 def get_market_regime(xu100_df: pd.DataFrame) -> dict:
     """BIST 100 endeksine bakarak piyasa rejimini (Ayı/Boğa) belirler."""
@@ -338,9 +363,9 @@ def generate_signals_and_score(df: pd.DataFrame, ticker: str = "", market_regime
         reversal = check_bottom_reversal(df)
         reversal_bonus = reversal['score'] if is_bear else 0
         div_res = detect_rsi_divergence(df)
-        if div_res['text']: summary.append(div_res['text'])
+        if div_res['summary']: summary.append(div_res['summary'])
         sqz_res = check_volatility_squeeze(df)
-        if sqz_res['text']: summary.append(sqz_res['text'])
+        if sqz_res['summary']: summary.append(sqz_res['summary'])
 
         # TEKNİK TOPLAM SKOR (%70 Ağırlık için baz)
         tech_total = (t_score * 0.40) + (m_score * 0.40) + (v_score * 0.20) + reversal_bonus + div_res['bonus']

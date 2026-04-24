@@ -16,7 +16,13 @@ DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bist_cache.d
 
 def _get_connection():
     """SQLite bağlantısı döndürür. Tablo yoksa oluşturur."""
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30)
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+    except:
+        pass
+        
     conn.execute("""
         CREATE TABLE IF NOT EXISTS ohlcv (
             ticker TEXT NOT NULL,
