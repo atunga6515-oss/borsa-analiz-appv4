@@ -2,11 +2,12 @@ import streamlit as st
 import pandas as pd
 import yfinance as yf
 
-APP_VERSION = "v2.2.1"
+APP_VERSION = "v2.3.0"
 from morning_sniper import get_morning_sniper_candidates
-from warrant_engine import WarrantEngine as we
-import warrant_data as wd
-import warrant_scraper as ws
+# warrant modülleri devre dışı
+# from warrant_engine import WarrantEngine as we
+# import warrant_data as wd
+# import warrant_scraper as ws
 import numpy as np
 import requests
 import time
@@ -466,7 +467,7 @@ def main():
         "🌟 Haber Alpha (Alpha Discovery)",
         "🏆 Stratejik Seçki (Top Picks)",
         "🧨 Günlük Açılış Radarı (Sniper)",
-        "📟 Varant Analiz Terminali",
+
         "🎯 20 Günlük Trader Disiplini",
         "🔒 Profil ve Güvenlik"
     ])
@@ -1717,170 +1718,8 @@ def main():
         else:
             st.info("Henüz bir tarama yapılmadı veya açılış kriterlerine uygun (High Probability) bir fırsat bulunamadı. Taramayı başlatmak için butona basın.")
 
-    elif mode == "📟 Varant Analiz Terminali":
-        st.title("📟 Varant Analiz & Greeks Terminali")
-        st.markdown("""
-        Bu modül, **Black-Scholes** modelini kullanarak varantların teorik fiyatlarını ve 
-        Greeks (Delta, Theta, Gamma) değerlerini hesaplar.
-        """)
-        
-        wd.init_warrant_db()
-        
-        # --- GERÇEK VERİ GÜNCELLEME BUTONLARI ---
-        st.sidebar.markdown("### 🔄 Veri Kaynağı")
-        if st.sidebar.button("📊 İş Varant Güncelle", use_container_width=True):
-            with st.spinner("İş Varant sistemine bağlanılıyor..."):
-                msg = ws.scrape_is_varant()
-                if "BAŞARILI" in msg:
-                    st.sidebar.success(msg)
-                    time.sleep(1)
-                    st.rerun()
-                else:
-                    st.sidebar.error(msg)
-        
-        if st.sidebar.button("📉 Ak Varant Güncelle", use_container_width=True):
-            with st.spinner("Ak Varant sistemine bağlanılıyor..."):
-                msg = ws.scrape_ak_varant()
-                if "BAŞARILI" in msg:
-                    st.sidebar.success(msg)
-                    time.sleep(1)
-                    st.rerun()
-                else:
-                    st.sidebar.error(msg)
-        
-        st.sidebar.markdown("---")
-        st.sidebar.markdown("### 📁 Manuel Excel Yükle")
-        st.sidebar.info("Bot engeline takılmamak için ihraççı sitesinden indirdiğiniz Excel'i buraya yükleyebilirsiniz.")
-        export_issuer = st.sidebar.selectbox("İhraççı Seçin", ["IS VARANT", "AK VARANT"])
-        uploaded_file = st.sidebar.file_uploader(f"{export_issuer} Excel Dosyası Seç", type=['xlsx', 'xls'])
-        
-        if uploaded_file is not None:
-            if st.sidebar.button("📤 Verileri İçeri Aktar", use_container_width=True):
-                with st.spinner("Excel işleniyor..."):
-                    msg = ws.process_warrant_excel(uploaded_file, export_issuer)
-                    if "BAŞARILI" in msg:
-                        st.sidebar.success(msg)
-                        time.sleep(1)
-                        st.rerun()
-                    else:
-                        st.sidebar.error(msg)
+    # Varant Analiz Terminali modülü kaldırıldı (v2.3.0)
 
-        c1, c2 = st.columns([1, 2])
-        
-        # Dinamik Dayanak Varlık Listesi
-        all_w = wd.get_all_warrants()
-        unique_underlyings = sorted(all_w['underlying'].unique().tolist()) if not all_w.empty else ["THYAO", "AKBNK", "XU030"]
-        
-        underlying = c1.selectbox("Dayanak Varlık Seçin", unique_underlyings)
-        risk_free_rate = c1.number_input("Risksiz Faiz Oranı (%)", value=45.0) / 100
-        
-        strat_mode = st.radio("Sinyal Filtresi", ["Tümü", "🚨 Yüksek Volatilite Modu", "🛡️ Güvenli Liman Modu"], horizontal=True)
-        
-        w_df = wd.get_warrants_by_underlying(underlying)
-        
-        if w_df.empty:
-            st.warning(f"{underlying} için kayıtlı varant bulunamadı.")
-        else:
-            s_price = get_live_price(underlying)
-            st.metric(f"{underlying} Canlı Fiyat", f"{s_price:,.2f} ₺")
-            
-            analysis_results = []
-            for _, row in w_df.iterrows():
-                # Hesaplamalar
-                expiry_str = str(row['expiry_date']).strip()
-                try:
-                    expiry = datetime.strptime(expiry_str, '%Y-%m-%d')
-                except:
-                    try:
-                        expiry = datetime.strptime(expiry_str, '%d.%m.%Y')
-                    except:
-                        try:
-                            expiry = datetime.strptime(expiry_str.split(' ')[0], '%Y-%m-%d')
-                        except:
-                            expiry = datetime.now() + pd.Timedelta(days=30)
-                days_to_expiry = (expiry - datetime.now()).days
-                t_years = days_to_expiry / 365
-                
-                # Greeks ve Teorik Fiyat
-                t_price = we.black_scholes(s_price, row['strike'], t_years, risk_free_rate, row['iv'], row['type'].lower())
-                greeks = we.calculate_greeks(s_price, row['strike'], t_years, risk_free_rate, row['iv'], row['type'].lower())
-                
-                market_px = get_live_price(row['ticker'])
-                if market_px <= 0: market_px = t_price * 1.05 # Mock/Kapalı piyasa simülasyonu
-                
-                # Kaldıraç (Effective Leverage)
-                leverage = (abs(greeks['delta']) * s_price) / market_px if market_px > 0 else 0
-                
-                score = we.score_warrant(s_price, market_px, t_price, greeks, days_to_expiry, row['multiplier'], leverage)
-                
-                res = {
-                    "Varant": row['ticker'],
-                    "Tip": row['type'],
-                    "Kullanım": row['strike'],
-                    "Vade": row['expiry_date'],
-                    "Fiyat": round(market_px, 2),
-                    "Teorik": round(t_price, 2),
-                    "Delta": greeks['delta'],
-                    "Theta (Gün)": greeks['theta'],
-                    "Kaldıraç": round(leverage, 1),
-                    "Skor": score
-                }
-                
-                # Strateji Filtreleme
-                if strat_mode == "🚨 Yüksek Volatilite Modu":
-                    if abs(greeks['delta']) > 0.6 and leverage > 10: analysis_results.append(res)
-                elif strat_mode == "🛡️ Güvenli Liman Modu":
-                    if abs(greeks['theta']) < 0.05 and days_to_expiry > 30: analysis_results.append(res)
-                else:
-                    analysis_results.append(res)
-            
-            if analysis_results:
-                results_df = pd.DataFrame(analysis_results).sort_values(by="Skor", ascending=False)
-                
-                st.subheader("📊 Varant Karşılaştırma ve Arbitraj Tablosu")
-                st.dataframe(results_df.style.background_gradient(subset=['Skor'], cmap='RdYlGn'), use_container_width=True)
-                
-                # Detaylı Greeks Kartı
-                st.markdown("---")
-                st.subheader("🔍 Seçili Varant Detay Analizi")
-                sel_w = st.selectbox("Detaylarını incelemek istediğiniz varantı seçin", results_df['Varant'])
-                sel_data = results_df[results_df['Varant'] == sel_w].iloc[0]
-                
-                g1, g2, g3, g4 = st.columns(4)
-                g1.metric("Delta (Duyarlılık)", sel_data['Delta'])
-                g2.metric("Theta (Zaman Kaybı)", sel_data['Theta (Gün)'])
-                g3.metric("Efektif Kaldıraç", f"{sel_data['Kaldıraç']}x")
-                g4.metric("Sniper Skor", f"{sel_data['Skor']}/100")
-            else:
-                st.info("Seçili stratejiye uygun varant bulunamadı.")
-
-            # --- YENİ: VARANT STAR LIST (TOP PICKS) ---
-            st.markdown("---")
-            st.subheader("🏆 Varant Star List (Top Picks Selection)")
-            st.caption("Tüm piyasayı tarayarak Greeks ve Skor bazlı en iyi yatırım yapılabilecek varantları seçer.")
-            
-            if st.button("🌟 Tüm Varantları Tara ve Yıldız Listeyi Bul"):
-                with st.spinner("Piyasadaki tüm varantlar Black-Scholes modelinden geçiriliyor..."):
-                    all_warrants = wd.get_all_warrants()
-                    top_warrants_df = we.get_top_warrants(all_warrants, get_live_price, r_rate=risk_free_rate)
-                    
-                    if not top_warrants_df.empty:
-                        st.session_state['top_warrants'] = top_warrants_df
-                        st.success("Yıldız Liste Güncellendi!")
-                    else:
-                        st.error("Uygun varant bulunamadı.")
-            
-            if 'top_warrants' in st.session_state:
-                tw_df = st.session_state['top_warrants']
-                
-                # Stil verme
-                def style_w_star(row):
-                    styles = [''] * len(row)
-                    if row['Skor'] >= 75: styles = ['background-color: #0d5f30; color: white; font-weight: bold'] * len(row)
-                    return styles
-
-                st.dataframe(tw_df.style.apply(style_w_star, axis=1), use_container_width=True)
-                st.info("💡 **İpucu:** Skor > 75 olan varantlar hem zaman kaybı (Theta) düşük hem de dayanak varlık hareketine en duyarlı (Optimal) olanlardır.")
 
     elif mode == "🎯 20 Günlük Trader Disiplini":
         st.title("🎯 Sanal Fon Yönetimi & Psikoloji Disiplini")
