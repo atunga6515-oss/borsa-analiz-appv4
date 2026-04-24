@@ -96,7 +96,7 @@ def deep_analyze_stock(sym: str, market_regime: dict = None) -> dict:
     sent_100 = (sent_score + 1) * 50
     
     df = calculate_indicators(df)
-    sig = generate_signals_and_score(df, market_regime=market_regime, sentiment_score=sent_score)
+    sig = generate_signals_and_score(df, ticker=sym, market_regime=market_regime, sentiment_score=sent_score)
 
     # 2. Canlı Fiyat
     live_px = get_live_price(sym)

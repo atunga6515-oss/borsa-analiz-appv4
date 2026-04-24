@@ -255,9 +255,11 @@ def get_market_regime(xu100_df: pd.DataFrame) -> dict:
         # Kodun çökmesini engelleyen güvenli dönüş
         return {"mode": "Bilinmeyen", "is_bear": False, "daily_chg": 0.0, "xu100_5d_chg": 0.0, "rsi": 50.0}
 
-def generate_signals_and_score(df: pd.DataFrame, market_regime: dict = None, sentiment_score: float = 0.0) -> dict:
+from takas_engine import get_takas_data
+
+def generate_signals_and_score(df: pd.DataFrame, ticker: str = "", market_regime: dict = None, sentiment_score: float = 0.0) -> dict:
     """
-    Teknik sinyallerle Haber Duygu (Sentiment) verisini birleştiren 
+    Teknik sinyallerle Haber Duygu (Sentiment) verisini ve Takas Verisini birleştiren 
     Hibrit Karar Mekanizması.
     """
     if df.empty or len(df) < 2:
@@ -376,6 +378,20 @@ def generate_signals_and_score(df: pd.DataFrame, market_regime: dict = None, sen
             dist_ema20 = (close_price - ema20) / ema20 if ema20 > 0 else 0
             if dist_ema20 > 0.12: pgs_score -= (dist_ema20 - 0.12) * 200
             if rsi_val > 65: pgs_score -= (rsi_val - 65) * 1.5
+            
+            # Takas Teyidi (Yabancı Payı ve Değişim Modeli)
+            if ticker:
+                takas = get_takas_data(ticker)
+                fr_ratio = takas.get('foreign_ratio', 0)
+                d_chg = takas.get('daily_change', 0)
+                
+                if fr_ratio > 25.0 and d_chg > 0:
+                    pgs_score += 10 # Ciddi Yabancı Takas güvencesi var
+                    summary.append(f"🏦 Takas Teyidi Pozitif: Yabancı Payı (%{fr_ratio:.1f}) Artıyor (+%{d_chg:.2f})")
+                elif d_chg < -1.0:
+                    pgs_score -= 10 # Yabancı çıkışı
+                    summary.append(f"⚠️ Takas Uyarı: Yabancı çıkışı var (-%{abs(d_chg):.2f})")
+            
             pgs_score = round(max(0, min(100, pgs_score)), 1)
 
             if final_score > 75 and pgs_score > 75: conv_level = "YÜKSEK 🚀"

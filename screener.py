@@ -273,7 +273,7 @@ def _analyze_single_stock(sym: str, market_regime: dict = None) -> dict:
             
         df = calculate_indicators(df)
         last = df.iloc[-1]
-        sig = generate_signals_and_score(df, market_regime=market_regime)
+        sig = generate_signals_and_score(df, ticker=sym, market_regime=market_regime)
         
         # Canlı Fiyat & Değişim
         live_px = get_live_price(sym)

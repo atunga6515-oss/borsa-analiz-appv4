@@ -64,7 +64,7 @@ def get_morning_sniper_candidates(symbol_list=None):
                 is_super_sniper = True
                 
             # --- 5. Genel Skor ve Pattern (Yutan Boğa Çarpanı) ---
-            sig = generate_signals_and_score(df, market_regime=market_regime, sentiment_score=sent_score)
+            sig = generate_signals_and_score(df, ticker=sym, market_regime=market_regime, sentiment_score=sent_score)
             patterns_info = detect_candlestick_patterns(df)
             pattern_summary = patterns_info.get('summary', '')
             has_bullish_engulfing = 'Yutan Boğa' in pattern_summary or 'Bullish Engulfing' in pattern_summary

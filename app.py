@@ -520,7 +520,7 @@ def main():
             with st.spinner("🤖 Haber Akışı AI ile analiz ediliyor..."):
                 sent_score, news_list = get_sentiment_summary(sym)
                 
-            res = generate_signals_and_score(df, market_regime=market_regime, sentiment_score=sent_score)
+            res = generate_signals_and_score(df, ticker=sym, market_regime=market_regime, sentiment_score=sent_score)
             live_px = df['Close'].iloc[-1]
             sr_data = calculate_best_zones(df)
             
