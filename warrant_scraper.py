@@ -71,29 +71,57 @@ def scrape_is_varant():
 
 def scrape_ak_varant():
     """
-    Ak Varant web sitesi üzerinden güncel varant listesini çeker.
+    Ak Varant web sitesi üzerinden güncel varant listesini çeker. (Yeni Domain: varant.akyatirim.com.tr)
     """
-    url = "https://www.akvarant.com/api/Price/GetWarrantList"
+    # Eski www.akvarant.com yerine güncel domain:
+    url = "https://varant.akyatirim.com.tr/api/Price/GetWarrantList"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer": "https://varant.akyatirim.com.tr/piyasa-analiz/varant-takip",
+        "Accept": "application/json, text/plain, */*"
+    }
+    
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, headers=headers, timeout=10)
+        
+        # Eğer bu endpoint HTML dönüyorsa, muhtemelen bir yönlendirme vardır.
+        if response.status_code != 200 or "text/html" in response.headers.get("Content-Type", "").lower():
+            # Alternatif Endpoint Denemesi
+            url_alt = "https://varant.akyatirim.com.tr/piyasa-analiz/GetVarantTakipList"
+            response = requests.post(url_alt, headers=headers, json={}, timeout=10)
+
         if response.status_code != 200:
             return f"AkVarant Hata: {response.status_code}"
             
-        raw_warrants = response.json()
+        try:
+            raw_warrants = response.json()
+        except:
+            return "AkVarant Hatası: Sunucudan beklenen JSON verisi alınamadı (HTML döndü)."
+
+        if not raw_warrants:
+            return "AkVarant verisi boş geldi."
+
         warrant_list = []
         for w in raw_warrants:
             try:
-                ticker = w.get('WarrantCode')
-                underlying = w.get('UnderlyingCode')
-                w_type = 'CALL' if w.get('OptionType') == 1 else 'PUT'
-                strike = float(w.get('StrikePrice', 0))
-                expiry_date = w.get('MaturityDate').split('T')[0]
-                multiplier = float(w.get('ConversionRatio', 1))
-                iv = float(w.get('ImpliedVolatility', 50)) / 100
+                # Ak Yatırım API alan adları:
+                ticker = w.get('WarrantCode') or w.get('Symbol')
+                underlying = w.get('UnderlyingCode') or w.get('UnderlyingAssetCode')
+                
+                # OptionType 1: CALL, 2: PUT (Ak Yatırım standardı)
+                opt_type = w.get('OptionType') or w.get('Type')
+                w_type = 'CALL' if str(opt_type) in ['1', 'Alım', 'Call'] else 'PUT'
+                
+                strike = float(str(w.get('StrikePrice', 0)).replace(',', '.'))
+                expiry_raw = w.get('MaturityDate') or w.get('Vade')
+                expiry_date = expiry_raw.split('T')[0] if expiry_raw else None
+                multiplier = float(str(w.get('ConversionRatio', 1)).replace(',', '.'))
+                iv = float(str(w.get('ImpliedVolatility', w.get('Volatility', 50))).replace(',', '.')) / 100
 
-                warrant_list.append((
-                    ticker, underlying, w_type, strike, expiry_date, multiplier, 'AK VARANT', iv
-                ))
+                if ticker and underlying:
+                    warrant_list.append((
+                        ticker, underlying, w_type, strike, expiry_date, multiplier, 'AK VARANT', iv
+                    ))
             except: continue
 
         conn = sqlite3.connect(DB_PATH)
