@@ -326,6 +326,7 @@ def _analyze_single_stock(sym: str, market_regime: dict = None) -> dict:
         zones = calculate_best_zones(df)
         dist_sup = "-"
         dist_res = "-"
+        d_pct = 999.0 # Varsayılan olarak destekten çok uzak / destek yok
         if zones.get('supports'):
             sup = zones['supports'][0][1] # (label, price) tuple
             d_pct = ((display_price - sup) / display_price) * 100
@@ -404,11 +405,25 @@ def _analyze_single_stock(sym: str, market_regime: dict = None) -> dict:
         takas = get_takas_data(sym)
         foreign_ratio = takas.get('foreign_ratio', 0.0)
 
+        # Desteğe Yakınlık Skoru (0-100)
+        # Tam destekte veya altındaysa 100 puan, her %1 uzaklaşma için -10 puan
+        sup_score = max(0.0, 100.0 - (d_pct * 10.0)) if d_pct >= 0 else 100.0
+        
+        # Sinyal Bonusları
+        trend_bonus = 10.0 if "Çift AL" in trend_uyum else 0.0
+        smc_bonus = 5.0 if smc_res['detected'] else 0.0
+        obv_bonus = 5.0 if obv_res['detected'] else 0.0
+        
+        # Ensemble Güven Skoru
+        ensemble_score = (v6_hybrid_score * 0.40) + (sig['pgs'] * 0.40) + (sup_score * 0.20) + trend_bonus + smc_bonus + obv_bonus
+        ensemble_score = round(min(100.0, max(0.0, ensemble_score)), 1)
+
         return {
             "Hisse": sym,
             "Fiyat": round(display_price, 2),
             "Değişim (%)": round(pct_change, 2),
             "Göreceli Güç (Alpha)": alpha_text,
+            "Ensemble Güven Skoru": ensemble_score,
             "V6 Hibrit Skor": v6_hybrid_score,
             "Yabancı Oranı (%)": round(foreign_ratio, 1),
             "Risk/Ödül (R/R)": round(sig.get('rr_ratio', 0), 2),
@@ -470,7 +485,7 @@ def run_screener(symbol_list: list, username: str, progress_bar=None, max_worker
         return pd.DataFrame()
         
     res_df = pd.DataFrame(results)
-    res_df = res_df.sort_values(by="V6 Hibrit Skor", ascending=False).reset_index(drop=True)
+    res_df = res_df.sort_values(by="Ensemble Güven Skoru", ascending=False).reset_index(drop=True)
     
     # Tarama sonuçlarını SQLite'a kaydet (Özellik 2)
     save_scan_results(res_df, username)

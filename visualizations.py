@@ -161,3 +161,133 @@ def create_equity_curve_chart(equity_df: pd.DataFrame, symbol: str) -> go.Figure
     fig.update_yaxes(title_text="Toplam Kasa (TRY)", secondary_y=False)
     fig.update_yaxes(title_text="Kayıp Oranı (%)", secondary_y=True)
     return fig
+
+def create_signals_chart(df: pd.DataFrame, symbol: str) -> go.Figure:
+    if df.empty:
+        return go.Figure()
+
+    fig = make_subplots(rows=3, cols=1, shared_xaxes=True, 
+                        vertical_spacing=0.03, row_heights=[0.65, 0.17, 0.18])
+
+    # 1. Candlestick
+    fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'],
+                                 low=df['Low'], close=df['Close'], name=f'{symbol}'),
+                  row=1, col=1)
+
+    # Hareketli Ortalamalar
+    if 'EMA_20' in df.columns:
+        fig.add_trace(go.Scatter(x=df.index, y=df['EMA_20'], line=dict(color='orange', width=1.5), name='EMA 20'), row=1, col=1)
+    if 'EMA_50' in df.columns:
+        fig.add_trace(go.Scatter(x=df.index, y=df['EMA_50'], line=dict(color='cyan', width=1.5), name='EMA 50'), row=1, col=1)
+
+    # Bollinger Band
+    if 'BBU_20_2.0' in df.columns and 'BBL_20_2.0' in df.columns:
+        fig.add_trace(go.Scatter(x=df.index, y=df['BBU_20_2.0'], line=dict(color='rgba(200,200,200,0.2)', width=1, dash='dot'), name='BB Üst'), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=df['BBL_20_2.0'], line=dict(color='rgba(200,200,200,0.2)', width=1, dash='dot'), name='BB Alt'), row=1, col=1)
+
+    # AL Sinyalleri (Yeşil Yukarı Ok)
+    if 'Buy_Signal' in df.columns:
+        buy_df = df[df['Buy_Signal'].notna()]
+        if not buy_df.empty:
+            fig.add_trace(go.Scatter(
+                x=buy_df.index,
+                y=buy_df['Buy_Signal'],
+                mode='markers+text',
+                marker=dict(
+                    symbol='triangle-up',
+                    size=16,
+                    color='#26de81', # Neon Yeşil
+                    line=dict(width=2, color='white')
+                ),
+                text='AL',
+                textposition='bottom center',
+                textfont=dict(color='#26de81', size=13, family='Arial Black'),
+                hovertext=buy_df['Signal_Reason'],
+                name='AL Sinyali'
+            ), row=1, col=1)
+
+    # SAT Sinyalleri (Kırmızı Aşağı Ok)
+    if 'Sell_Signal' in df.columns:
+        sell_df = df[df['Sell_Signal'].notna()]
+        if not sell_df.empty:
+            fig.add_trace(go.Scatter(
+                x=sell_df.index,
+                y=sell_df['Sell_Signal'],
+                mode='markers+text',
+                marker=dict(
+                    symbol='triangle-down',
+                    size=16,
+                    color='#ff4757', # Neon Kırmızı
+                    line=dict(width=2, color='white')
+                ),
+                text='SAT',
+                textposition='top center',
+                textfont=dict(color='#ff4757', size=13, family='Arial Black'),
+                hovertext=sell_df['Signal_Reason'],
+                name='SAT Sinyali'
+            ), row=1, col=1)
+
+    # 2. MACD
+    if 'MACD' in df.columns and 'MACDs' in df.columns and 'MACDh' in df.columns:
+        fig.add_trace(go.Scatter(x=df.index, y=df['MACD'], line=dict(color='blue', width=1.2), name='MACD'), row=2, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=df['MACDs'], line=dict(color='red', width=1.2), name='Signal'), row=2, col=1)
+        colors = ['#26de81' if val > 0 else '#ff4757' for val in df['MACDh']]
+        fig.add_trace(go.Bar(x=df.index, y=df['MACDh'], marker_color=colors, name='MACD Hist'), row=2, col=1)
+
+    # 3. RSI
+    if 'RSI_14' in df.columns:
+        fig.add_trace(go.Scatter(x=df.index, y=df['RSI_14'], line=dict(color='purple', width=1.5), name='RSI 14'), row=3, col=1)
+        fig.add_hline(y=70, line_dash="dot", line_color="red", row=3, col=1)
+        fig.add_hline(y=30, line_dash="dot", line_color="green", row=3, col=1)
+
+    fig.update_layout(
+        title=f'{symbol} - 🚦 Al-Sat Sinyal Modülü (100+ İndikatör Ensemble Oylama Analizi)',
+        template='plotly_dark',
+        height=750,
+        margin=dict(l=20, r=20, t=50, b=20),
+        xaxis_rangeslider_visible=False,
+        showlegend=False
+    )
+    return fig
+
+def create_indicator_performance_chart(performance_df: pd.DataFrame) -> go.Figure:
+    if performance_df.empty:
+        return go.Figure()
+
+    # Sadece ilk 10'unu al ve tersine çevir
+    sub_df = performance_df.head(10).iloc[::-1]
+
+    # Renkleri belirle
+    colors = []
+    for sig in sub_df['Anlık Sinyal']:
+        if "AL" in sig:
+            colors.append('#26de81') # Neon Yeşil
+        elif "SAT" in sig:
+            colors.append('#ff4757') # Neon Kırmızı
+        else:
+            colors.append('#94a3b8') # Koyu Gri
+            
+    fig = go.Figure(go.Bar(
+        x=sub_df['Tarihsel Başarı (Win Rate %)'],
+        y=sub_df['Indikatör Adı'],
+        orientation='h',
+        marker_color=colors,
+        text=sub_df['Tarihsel Başarı (Win Rate %)'].apply(lambda x: f" %{x:.1f} Başarı"),
+        textposition='inside',
+        insidetextanchor='end',
+        textfont=dict(color='white', size=11, family='Arial Black'),
+        hovertemplate="<b>%{y}</b><br>Tarihsel Başarı: %{x}%<br>Ağırlık: %{customdata}%<extra></extra>",
+        customdata=sub_df['Oylama Ağırlığı (%)']
+    ))
+
+    fig.update_layout(
+        title="🏆 En Başarılı 10 İndikatörün Performansı & Canlı Kararları",
+        template='plotly_dark',
+        height=380,
+        margin=dict(l=20, r=20, t=40, b=20),
+        xaxis=dict(title="Geriye Dönük Başarı Oranı (Win Rate %)", range=[0, 105])
+    )
+    
+    return fig
+
+
