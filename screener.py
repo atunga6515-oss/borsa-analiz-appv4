@@ -216,7 +216,7 @@ def get_persistent_signals(username: str, min_days: int = 2) -> pd.DataFrame:
            ROUND(AVG(score),1) as ort_skor,
            MIN(scan_date) as ilk_tarih, MAX(scan_date) as son_tarih
            FROM scan_history
-           WHERE decision IN ('Al', 'Güçlü Al', 'Sat', 'Güçlü Sat') AND username=?
+           WHERE decision NOT IN ('Nötr', '⚖️ Nötr / Konsolidasyon', 'Hata', 'Veri Yetersiz') AND username=?
            GROUP BY ticker, decision
            HAVING COUNT(DISTINCT scan_date) >= ?
            ORDER BY gun_sayisi DESC, ort_skor DESC""",
