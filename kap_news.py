@@ -9,17 +9,28 @@ from datetime import datetime, timezone, timedelta
 import email.utils
 import math
 import pytz
+import os
 
 TR_TZ = pytz.timezone("Europe/Istanbul")
 
 # Gemini API Yapılandırması (Yeni SDK - google-genai)
 def _get_client():
-    api_key = st.secrets.get("GEMINI_API_KEY")
+    api_key = None
+    try:
+        api_key = st.secrets.get("GEMINI_API_KEY")
+    except Exception:
+        pass
+    
+    if not api_key:
+        api_key = os.environ.get("GEMINI_API_KEY")
+        
     if api_key:
         try:
             return genai.Client(api_key=api_key)
         except Exception as e:
             st.error(f"Gemini Client Başlatma Hatası: {str(e)}")
+    else:
+        st.warning("⚠️ API Anahtarı bulunamadı! Lütfen '.streamlit/secrets.toml' dosyasına veya sistem ortam değişkenlerine 'GEMINI_API_KEY' ekleyin.")
     return None
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -89,13 +100,18 @@ def analyze_sentiment_with_ai(news_items):
         return None
 
 def fetch_kap_news(ticker):
-    """Google News RSS üzerinden haberleri çeker."""
-    query = urllib.parse.quote(f"{ticker} hisse borsa")
+    """Google News RSS üzerinden KAP odaklı güncel şirket haberlerini çeker."""
+    query = urllib.parse.quote(f"{ticker} KAP hisse haberi")
     url = f"https://news.google.com/rss/search?q={query}&hl=tr&gl=TR&ceid=TR:tr"
     
     try:
+        import ssl
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        resp = urllib.request.urlopen(req, timeout=10)
+        resp = urllib.request.urlopen(req, timeout=10, context=ctx)
         xml_data = resp.read()
         root = ET.fromstring(xml_data)
         

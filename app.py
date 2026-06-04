@@ -4,7 +4,7 @@ import yfinance as yf
 import os
 
 APP_VERSION = "v3.0.2"
-from morning_sniper import get_morning_sniper_candidates
+
 # warrant modülleri devre dışı
 # from warrant_engine import WarrantEngine as we
 # import warrant_data as wd
@@ -24,17 +24,17 @@ from screener import (run_screener, BIST30_SYMBOLS, BIST100_SYMBOLS, BIST_ALL_SY
                       save_scan_results, get_sector_list, filter_by_sector, 
                       get_scan_history, get_persistent_signals,
                       add_to_watchlist, remove_from_watchlist, get_watchlist)
-from ml_forecast import generate_ml_forecast
+
 from telegram_utils import send_telegram_report
 from advanced_backtest import run_advanced_backtest
 from support_resistance import calculate_best_zones
 from alerts import check_hybrid_alerts
 import portfolio as pf
+from takas_engine import get_takas_data
 import plotly.express as px
 from kap_news import render_kap_news_panel, get_sentiment_summary
 from top_picks import (find_top_picks, save_top_picks_history, 
                         get_top_picks_history_dates, get_top_picks_by_date)
-import trading_goal_manager as tgm
 import auth
 from risk_manager import (
     calculate_atr_stops, calculate_kelly_criterion, calculate_position_size,
@@ -479,17 +479,13 @@ def main():
         "📊 Hisse Profili ve Derinlik Analizi",
         "🚦 Al-Sat Sinyali",
         "🔍 Piyasa Tarama Terminali (Screener)",
-        "🤖 Öngörüsel Model Analizi (Predictive Engine)",
         "💼 Gelişmiş Backtest",
         "🧪 Strateji Karşılaştırma Motoru",
         "📈 Sanal Portföy",
         "⚠️ Risk Yönetim Merkezi",
         "🔔 Alarm Merkezi",
         "📰 KAP ve Haberler",
-        "🌟 Haber Alpha (Alpha Discovery)",
         "🏆 Stratejik Seçki (Top Picks)",
-        "🧨 Günlük Açılış Radarı (Sniper)",
-        "🎯 20 Günlük Trader Disiplini",
         "🔒 Profil ve Güvenlik"
     ])
     
@@ -529,6 +525,7 @@ def main():
 
     if mode == "📊 Hisse Profili ve Derinlik Analizi":
         st.title("📊 Hisse Profili ve Derinlik Analizi")
+        st.caption("Bu modül, hisse senedinin anlık fiyatını, temel verilerini ve hacim analizlerini incelerken aynı zamanda arka planda çalışan **100 adet teknik indikatörden** elde edilen \"Ana Sinyal\" durumunu detaylı bir şekilde raporlar.")
         sym = st.sidebar.text_input("Hisse Kodu (Örn: EREGL)", "THYAO")
         if sym:
             with st.spinner("Veriler işleniyor..."):
@@ -541,7 +538,7 @@ def main():
             xu100_df = fetch_data("XU100", "1d", "1y")
             market_regime = get_market_regime(xu100_df)
             
-            df = calculate_indicators(df)
+            df = calculate_indicators(df, ticker=sym)
             
             # --- Hibrit Duygu Analizi Çek ---
             with st.spinner("🤖 Haber Akışı AI ile analiz ediliyor..."):
@@ -594,7 +591,7 @@ def main():
                 """, unsafe_allow_html=True)
                 
                 # --- PREMIUM STYLED METRICS ---
-                decision_label = res.get('decision', 'N/A')
+                decision_label = res.get('core_decision', res.get('decision', 'N/A'))
                 conv_label = res.get('conviction_level', 'ORTA ⚖️')
                 final_score = res.get('score', 0)
                 pgs_score = res.get('pgs', 0)
@@ -617,8 +614,8 @@ def main():
                     </div>
                 """, unsafe_allow_html=True)
 
-                # Skorlar (Gelişmiş Metrik Barı)
-                col_s1, col_s2 = st.columns(2)
+                # Skorlar ve Takas (Gelişmiş Metrik Barı)
+                col_s1, col_s2, col_s3 = st.columns(3)
                 with col_s1:
                     st.markdown(f"""
                         <div style="text-align: center; border: 1px solid #3e3e3e; padding: 10px; border-radius: 10px; background-color: #1e1e1e;">
@@ -631,6 +628,19 @@ def main():
                         <div style="text-align: center; border: 1px solid #3e3e3e; padding: 10px; border-radius: 10px; background-color: #1e1e1e;">
                             <div style="color: #fed330; font-size: 1.5rem; font-weight: bold;">{pgs_score}</div>
                             <div style="color: gray; font-size: 0.7rem;">Güvenlik (PGS)</div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                with col_s3:
+                    takas_info = get_takas_data(sym)
+                    fr = takas_info.get('foreign_ratio', 0.0)
+                    dc = takas_info.get('daily_change', 0.0)
+                    t_color = "#26de81" if dc > 0 else "#ff4757" if dc < 0 else "gray"
+                    t_sign = "+" if dc > 0 else ""
+                    st.markdown(f"""
+                        <div style="text-align: center; border: 1px solid #3e3e3e; padding: 10px; border-radius: 10px; background-color: #1e1e1e;">
+                            <div style="color: #38bdf8; font-size: 1.5rem; font-weight: bold;">%{fr:.2f}</div>
+                            <div style="color: {t_color}; font-size: 0.75rem; font-weight: bold;">{t_sign}{dc:.2f}% (Değişim)</div>
+                            <div style="color: gray; font-size: 0.7rem;">Yabancı Takas Payı</div>
                         </div>
                     """, unsafe_allow_html=True)
 
@@ -652,10 +662,11 @@ def main():
                 
                 st.write("**🛡️ Risk Yönetimi (ATR Bazlı):**")
                 risk_data = res.get('risk', {})
-                rc1, rc2, rc3 = st.columns(3)
+                rc1, rc2, rc3, rc4 = st.columns(4)
                 rc1.metric("Stop Loss", f"{risk_data.get('SL', 0):.2f}")
-                rc2.metric("Hedef 1 (TP1)", f"{risk_data.get('TP1', 0):.2f}")
-                rc3.metric("Hedef 2 (TP2)", f"{risk_data.get('TP2', 0):.2f}")
+                rc2.metric("İzleyen Stop (TS)", f"{risk_data.get('TrailingStop', 0):.2f}")
+                rc3.metric("Hedef 1 (TP1)", f"{risk_data.get('TP1', 0):.2f}")
+                rc4.metric("Hedef 2 (TP2)", f"{risk_data.get('TP2', 0):.2f}")
 
                 # --- TELEGRAM RAPORLAMA ---
                 st.write("---")
@@ -733,6 +744,7 @@ def main():
 
     elif mode == "🚦 Al-Sat Sinyali":
         st.title("🚦 Al-Sat Sinyali Terminali")
+        st.caption("Terminal, **100 adet teknik indikatör** ve süre kombinasyonunu geriye dönük test eder, bu hisse senedinde en yüksek tarihsel başarıya sahip 15 indikatörü seçer ve ağırlıklı oylamayla dinamik AL/SAT sinyalleri üretir.")
         sym = st.sidebar.text_input("Hisse Kodu (Örn: EREGL)", "THYAO")
         
         # Sinyal Hassasiyet Ayarı
@@ -748,7 +760,7 @@ def main():
                 
                 # Üst Kısım: Strateji İstatistikleri
                 st.markdown(f"### 📊 {sym.upper()} Çoklu İndikatör Oylama Başarı Analizi")
-                st.caption("Terminal, 100 adet teknik indikatör ve süre kombinasyonunu geriye dönük test eder, bu hisse senedinde en yüksek tarihsel başarıya sahip 15 indikatörü seçer ve ağırlıklı oylamayla dinamik AL/SAT sinyalleri üretir.")
+
                 
                 # --- ANLIK HAMLE VE KARAR TERMİNALİ ---
                 # Son verileri al
@@ -762,33 +774,31 @@ def main():
                 last_buy_date = buy_signals_idx[-1] if len(buy_signals_idx) > 0 else None
                 last_sell_date = sell_signals_idx[-1] if len(sell_signals_idx) > 0 else None
 
-                # Karar rejimini belirle
-                active_signal = "NÖTR"
-                active_signal_color = "#94a3b8" # Gri
-                active_action = "İzleme / Bekle ⚖️"
-                active_action_details = "101 indikatörün oylama gücü dengeli veya yatay trend hakim. Yeni bir sinyal oluşumu beklenmeli."
-
-                if last_buy_date is not None:
-                    if last_sell_date is None or last_buy_date > last_sell_date:
-                        active_signal = "AL (LONG POZİSYONDA)"
-                        active_signal_color = "#26de81" # Neon Yeşil
-                        active_action = "TUT / POZİSYONU KORU 📈"
-                        active_action_details = f"Son AL sinyali {last_buy_date.strftime('%Y-%m-%d')} tarihinde {float(df.loc[last_buy_date, 'Close']):.2f} ₺ fiyattan üretilmiş. Trend gücü korunuyor."
-                        days_since_buy = (df.index[-1] - last_buy_date).days
-                        if days_since_buy <= 5:
-                            active_action = "ALIM YAPILABİLİR (YENİ SİNYAL) 🚀"
-                            active_action_details = f"Sinyal motoru son 5 gün içinde yeni bir AL sinyali üretti. Alım bölgesinde değerlendirilebilir."
-
-                if last_sell_date is not None:
-                    if last_buy_date is None or last_sell_date > last_buy_date:
-                        active_signal = "SAT (SHORT POZİSYONDA)"
-                        active_signal_color = "#ff4757" # Kırmızı
-                        active_action = "SAT / NAKİTTE KAL 📉"
-                        active_action_details = f"Son SAT sinyali {last_sell_date.strftime('%Y-%m-%d')} tarihinde {float(df.loc[last_sell_date, 'Close']):.2f} ₺ fiyattan üretilmiş. Düşüş trendi sürüyor, acele edilmemeli."
-                        days_since_sell = (df.index[-1] - last_sell_date).days
-                        if days_since_sell <= 5:
-                            active_action = "SATIM / ÇIKIŞ YAP (YENİ SİNYAL) 🛑"
-                            active_action_details = f"Sinyal motoru yeni bir SAT sinyali üretti. Riski azaltmak için çıkış değerlendirilebilir."
+                # -- SSOT (Single Source of Truth) Karar Motoru Entegrasyonu --
+                xu100_df = fetch_data("XU100", "1d", "1y")
+                market_regime = get_market_regime(xu100_df)
+                try:
+                    sent_score, _ = get_sentiment_summary(sym)
+                except:
+                    sent_score = 0.0
+                ssot_res = generate_signals_and_score(df, ticker=sym, market_regime=market_regime, sentiment_score=sent_score)
+                decision_label = ssot_res.get('core_decision', 'NÖTR')
+                
+                if "Al" in decision_label:
+                    active_signal = "AL (LONG POZİSYONDA)"
+                    active_signal_color = "#26de81" # Neon Yeşil
+                    active_action = f"{decision_label.upper()} 🚀"
+                    active_action_details = f"SSOT 100-İndikatör motoru {sym.upper()} için güncel olarak '{decision_label}' kararı vermektedir. Diğer modüllerle %100 uyumludur."
+                elif "Sat" in decision_label:
+                    active_signal = "SAT (SHORT POZİSYONDA)"
+                    active_signal_color = "#ff4757" # Kırmızı
+                    active_action = f"{decision_label.upper()} 🛑"
+                    active_action_details = f"SSOT 100-İndikatör motoru {sym.upper()} için güncel olarak '{decision_label}' kararı vermektedir. Diğer modüllerle %100 uyumludur."
+                else:
+                    active_signal = "NÖTR"
+                    active_signal_color = "#94a3b8" # Gri
+                    active_action = "İzleme / Bekle ⚖️"
+                    active_action_details = "SSOT 100-İndikatör motoru yatay trend veya nötr piyasa tespit etti. Yeni bir kırılım beklenmeli."
 
                 # Ortalamalar Analizi
                 sma_20 = float(last_row['SMA_20']) if 'SMA_20' in last_row and pd.notna(last_row['SMA_20']) else np.nan
@@ -856,70 +866,14 @@ def main():
                 st.write("")
                 st.write("---")
                 
-                sc1, sc2, sc3, sc4 = st.columns(4)
-                
-                # Win Rate renklendirme
-                win_rate = stats['win_rate']
-                if win_rate >= 70:
-                    win_color = "#26de81"  # Neon Yeşil
-                    win_text = "Çok Başarılı 🚀"
-                elif win_rate >= 50:
-                    win_color = "#fed330"  # Sarı/Turuncu
-                    win_text = "Başarılı 📈"
-                else:
-                    win_color = "#ff4757"  # Kırmızı
-                    win_text = "Zayıf ⚠️"
-                    
-                # Toplam getiri renklendirme
-                total_ret = stats['total_return']
-                ret_color = "#26de81" if total_ret >= 0 else "#ff4757"
-                ret_sign = "+" if total_ret >= 0 else ""
-                
-                with sc1:
-                    st.markdown(f"""
-                        <div style="background-color: #1e293b; padding: 15px; border-radius: 8px; border-left: 5px solid {win_color}; text-align: center;">
-                            <div style="font-size: 0.8rem; color: #94a3b8; font-weight: bold; text-transform: uppercase;">Ortaklaşa Başarı (Win Rate)</div>
-                            <div style="font-size: 1.8rem; color: {win_color}; font-weight: 900;">%{win_rate}</div>
-                            <div style="font-size: 0.7rem; color: #cbd5e1; margin-top: 5px;">{win_text}</div>
-                        </div>
-                    """, unsafe_allow_html=True)
-                    
-                with sc2:
-                    st.markdown(f"""
-                        <div style="background-color: #1e293b; padding: 15px; border-radius: 8px; border-left: 5px solid {ret_color}; text-align: center;">
-                            <div style="font-size: 0.8rem; color: #94a3b8; font-weight: bold; text-transform: uppercase;">Toplam Strateji Getirisi</div>
-                            <div style="font-size: 1.8rem; color: {ret_color}; font-weight: 900;">{ret_sign}{total_ret}%</div>
-                            <div style="font-size: 0.7rem; color: #cbd5e1; margin-top: 5px;">Ağırlıklı Oylama Getirisi</div>
-                        </div>
-                    """, unsafe_allow_html=True)
-                    
-                with sc3:
-                    st.markdown(f"""
-                        <div style="background-color: #1e293b; padding: 15px; border-radius: 8px; border-left: 5px solid #38bdf8; text-align: center;">
-                            <div style="font-size: 0.8rem; color: #94a3b8; font-weight: bold; text-transform: uppercase;">Toplam İşlem Sayısı</div>
-                            <div style="font-size: 1.8rem; color: #38bdf8; font-weight: 900;">{stats['total_trades']}</div>
-                            <div style="font-size: 0.7rem; color: #cbd5e1; margin-top: 5px;">Kazanç: {stats['win_trades']} | Kayıp: {stats['loss_trades']}</div>
-                        </div>
-                    """, unsafe_allow_html=True)
-                    
-                with sc4:
-                    st.markdown(f"""
-                        <div style="background-color: #1e293b; padding: 15px; border-radius: 8px; border-left: 5px solid #c084fc; text-align: center;">
-                            <div style="font-size: 0.8rem; color: #94a3b8; font-weight: bold; text-transform: uppercase;">En İyi / En Kötü İşlem</div>
-                            <div style="font-size: 1.4rem; color: #cbd5e1; font-weight: 900;">
-                                <span style="color: #26de81;">+{stats['best_trade']}%</span> / 
-                                <span style="color: #ff4757;">{stats['worst_trade']}%</span>
-                            </div>
-                            <div style="font-size: 0.7rem; color: #cbd5e1; margin-top: 5px;">Maksimum Kar ve Zarar</div>
-                        </div>
-                    """, unsafe_allow_html=True)
-
+                # --- SSOT (Single Source of Truth) DETAYLI ANALİZ ---
                 st.write("---")
                 st.markdown("### 🚦 Canlı Çoklu İndikatör Oylama Dağılımı")
                 
-                # Son satırdaki gücü al
-                buy_strength = df['Buy_Vote_Strength'].iloc[-1]
-                sell_strength = df['Sell_Vote_Strength'].iloc[-1]
+                total = ssot_res.get('total_votes', 1)
+                if total == 0: total = 1
+                buy_strength = (ssot_res.get('buy_votes', 0) / total) * 100
+                sell_strength = (ssot_res.get('sell_votes', 0) / total) * 100
                 neut_strength = max(0.0, 100.0 - buy_strength - sell_strength)
                 
                 # Canlı oylama barı
@@ -938,64 +892,62 @@ def main():
                     </div>
                 """, unsafe_allow_html=True)
                 
-                col_graph1, col_graph2 = st.columns([1.3, 1])
-                with col_graph1:
-                    performance_df = pd.DataFrame(top_indicators)
-                    from visualizations import create_indicator_performance_chart
-                    fig_perf = create_indicator_performance_chart(performance_df)
-                    st.plotly_chart(fig_perf, use_container_width=True)
-                with col_graph2:
-                    st.markdown("##### 🏆 En Başarılı İndikatör Liderliği")
-                    # Kolon formatlama ve güzelleştirme
-                    disp_df = performance_df.rename(columns={
-                        "Indikatör Adı": "İndikatör",
-                        "Tarihsel Başarı (Win Rate %)": "Başarı %",
-                        "Oylama Ağırlığı (%)": "Ağırlık %",
-                        "Anlık Sinyal": "Kararı"
-                    })
-                    st.dataframe(
-                        disp_df.head(10), 
-                        use_container_width=True, 
-                        hide_index=True,
-                        column_config={
-                            "Başarı %": st.column_config.ProgressColumn("Başarı", format="%%%d", min_value=0, max_value=100)
-                        }
-                    )
+                st.markdown("### 📝 Yapay Zeka Karar Özeti (Neden AL veya SAT?)")
+                summary_text = ssot_res.get('summary', 'Analiz detayı bulunamadı.')
+                if summary_text:
+                    st.info(summary_text)
+                    
+                st.write("---")
+                st.write("---")
+                st.markdown("### 🔍 SSOT İndikatör Kanıtları (Algoritma Arka Planı)")
+                st.caption("Yapay zekanın karar verirken baz aldığı 100+ indikatör kümesinden (Ensemble) öne çıkanların güncel durumları.")
+                
+                core_votes = ssot_res.get('core_votes_list', [])
+                if core_votes:
+                    proof_df = pd.DataFrame(core_votes)
+                    st.dataframe(proof_df, height=300, use_container_width=True, hide_index=True)
+                    
+                    al_count = sum(1 for v in core_votes if "AL" in v.get("Durum", ""))
+                    sat_count = sum(1 for v in core_votes if "SAT" in v.get("Durum", ""))
+                    notr_count = sum(1 for v in core_votes if "NÖTR" in v.get("Durum", ""))
+                    
+                    st.markdown(f"**Toplam listelenen Kural/İndikatör sayısı:** {len(proof_df)}")
+                    st.caption(f"🟢 **AL Diyenler:** {al_count} adet | 🔴 **SAT Diyenler:** {sat_count} adet | ⚖️ **NÖTR Kalanlar:** {notr_count} adet")
+                else:
+                    st.info("İndikatör detayları gösterilemiyor.")
 
                 st.write("---")
-                
-                # Plotly Grafiği Çizimi
+                # SSOT sonucuna göre grafiğin SON MUMUNU (Anlık Karar) güncelle
+                import numpy as np
+                if df is not None and not df.empty:
+                    # Eski 15'li indikatörden kalan son gün oylarını temizle
+                    if 'Buy_Signal' in df.columns:
+                        df.loc[df.index[-1], 'Buy_Signal'] = np.nan
+                    if 'Sell_Signal' in df.columns:
+                        df.loc[df.index[-1], 'Sell_Signal'] = np.nan
+                    
+                    ssot_decision_label = ssot_res.get('core_decision', 'Nötr').upper()
+                    last_low = df['Low'].iloc[-1]
+                    last_high = df['High'].iloc[-1]
+                    
+                    if "AL" in ssot_decision_label:
+                        if 'Buy_Signal' not in df.columns: df['Buy_Signal'] = np.nan
+                        if 'Signal_Reason' not in df.columns: df['Signal_Reason'] = ""
+                        df.loc[df.index[-1], 'Buy_Signal'] = last_low * 0.98
+                        df.loc[df.index[-1], 'Signal_Reason'] = "SSOT Kararı: " + ssot_decision_label
+                    elif "SAT" in ssot_decision_label:
+                        if 'Sell_Signal' not in df.columns: df['Sell_Signal'] = np.nan
+                        if 'Signal_Reason' not in df.columns: df['Signal_Reason'] = ""
+                        df.loc[df.index[-1], 'Sell_Signal'] = last_high * 1.02
+                        df.loc[df.index[-1], 'Signal_Reason'] = "SSOT Kararı: " + ssot_decision_label
+
+                # Plotly Grafiği Çizimi (Ana Grafik)
                 fig_sig = create_signals_chart(df, sym.upper())
                 st.plotly_chart(fig_sig, use_container_width=True)
 
-                # İşlem Geçmişi Detayları
-                with st.expander("📖 Son Sinyaller ve Detaylı İşlem Geçmişi (Tarih Sıralı)"):
-                    if stats['total_trades'] == 0:
-                        st.info("Bu hisse senedinde son 1 yılda işlem sinyali üretilmedi.")
-                    else:
-                        trades_df = pd.DataFrame(stats['trades'])
-                        
-                        # Kolon isimlerini Türkçe yapalım
-                        trades_df = trades_df.rename(columns={
-                            'buy_date': 'Alış Tarihi 🟢',
-                            'buy_price': 'Alış Fiyatı (₺)',
-                            'buy_reason': 'Alış Nedeni 🔍',
-                            'sell_date': 'Satış Tarihi 🔴',
-                            'sell_price': 'Satış Fiyatı (₺)',
-                            'sell_reason': 'Satış Nedeni 🔍',
-                            'return_pct': 'Getiri (%)',
-                            'win': 'Sonuç',
-                            'duration_days': 'Vade (Gün)'
-                        })
-                        
-                        # Sonuç kolonunu görsel yapalım
-                        trades_df['Sonuç'] = trades_df['Sonuç'].apply(lambda x: "🟢 Kazanç" if x else "🔴 Kayıp")
-                        
-                        # Tabloyu göster
-                        st.dataframe(trades_df.sort_index(ascending=False), use_container_width=True)
-
     elif mode == "🔍 Piyasa Tarama Terminali (Screener)":
         st.title("🔍 Piyasa Tarama Terminali (Screener)")
+        st.caption("BIST üzerindeki yüzlerce hisseyi saniyeler içinde **100 adet teknik indikatör**, hacim kırılımları ve temel finansal verilere göre tarayarak piyasadaki en güçlü alım/satım fırsatlarını puanlar ve listeler.")
         
         from screener import (get_sector_list, filter_by_sector, 
                               get_scan_history, get_persistent_signals,
@@ -1370,66 +1322,9 @@ def main():
         st.warning("⚠️ **Yasal Uyarı:** Bu sonuçlar teknik ve istatistiksel analize dayanmaktadır. Kesinlikle yatırım tavsiyesi niteliği taşımaz.")
 
 
-    elif mode == "🤖 Öngörüsel Model Analizi (Predictive Engine)":
-        st.title("🤖 Öngörüsel Model Analizi (Predictive Engine)")
-        sym = st.sidebar.text_input("Hisse Kodu (Örn: EREGL)", "ASELS")
-        days = st.sidebar.slider("Gelecek Tahmin Süresi (Gün)", 5, 60, 30)
-        
-        if sym:
-            with st.status(f"🤖 **Robot Yapay Zeka** {sym} için tahmin motorunu çalıştırıyor...", expanded=True) as status:
-                df_long = fetch_data(sym, "1d", "3y")
-                if df_long.empty:
-                    st.error("Veri bulunamadı.")
-                    status.update(label="❌ Tahmin başarısız.", state="error")
-                    return
-                
-                df_long = calculate_indicators(df_long)
-                ml_res = generate_ml_forecast(df_long, days_ahead=days)
-                status.update(label="✅ Robot Yapay Zeka analizi tamamladı.", state="complete")
-
-            with st.expander("🤖 Robot Yapay Zeka - Genişleyen Huni (Cone) Tahmin Modeli", expanded=True):
-                if "error" in ml_res:
-                    st.warning(ml_res["error"])
-                else:
-                    # ML Uyarılarını (Makro Veri Onayları) Göster
-                    if ml_res.get('warnings'):
-                        for w in ml_res['warnings']:
-                            st.warning(w)
-                    else:
-                        st.success("✅ Hibrit Onay: Endeks ve Kur verileri modellemeye başarıyla dahil edildi.")
-
-                    c_ml1, c_ml2 = st.columns([3, 1])
-                    with c_ml1:
-                        fig_ml = create_ml_chart(df_long, ml_res, sym)
-                        st.plotly_chart(fig_ml, use_container_width=True)
-                    with c_ml2:
-                        st.metric("Model Başarı Skoru (R²)", f"%{ml_res['confidence_score']}")
-                        
-                        last_est = ml_res['future_df']['Fiyat Tahmini'].iloc[-1]
-                        current_px = df_long['Close'].iloc[-1]
-                        est_diff = ((last_est - current_px) / current_px) * 100
-                        st.metric(f"{days}G Hedef Projeksiyon", f"{last_est:.2f} ₺", f"{est_diff:+.1f}%")
-                        
-                        st.write("**Stratejik Not:**")
-                        st.caption("Bu model, Random Forest mimarisi kullanarak geçmiş volatiliteyi 'Genişleyen Huni' grafiğine yansıtır. Vade uzadıkça belirsizlik (huni genişliği) istatistiksel olarak artar.")
-                
-                # --- OTONOM HİBRİT ALARM (V5) KONTROLÜ ---
-                try:
-                    # Global kütüphaneler kullanılacak
-                    xu100_temp = fetch_data("XU100", "1d", "1mo")
-                    regime_temp = get_market_regime(xu100_temp)
-                    sent_val, _ = get_sentiment_summary(sym)
-                    sig_res = generate_signals_and_score(df_long, market_regime=regime_temp, sentiment_score=sent_val)
-                    
-                    if check_hybrid_alerts(sym, sig_res.get('score', 0), current_px, sent_val, last_est):
-                        st.success("🚨 **Hibrit Algoritma Uyarıyor:** Bu hisse Otonom Trading (V5) algoritmamızın tüm Perfect Setup kriterlerini (+80 Puan, Pozitif AI Haber Akışı, Yüksek ML Hedefi) başarıyla karşılıyor. Telegram acil durum bildirimi gönderildi!")
-                except Exception as e:
-                    pass
-
-                st.info("💡 **Huni Okuma Kılavuzu:** İç halka %68 (1 SD), dış halka %95 (2 SD) olasılık kümesini temsil eder. Fiyatın huni içinde kalma olasılığı istatistiksel olarak yüksektir.")
-
     elif mode == "💼 Gelişmiş Backtest":
         st.title("💼 Kurumsal Portföy Backtest Simülatörü")
+        st.caption("Gelişmiş backtest motoru, **100 farklı teknik indikatörden** oluşan stratejinin geçmiş verilere uygulandığında nasıl bir getiri eğrisi çizeceğini komisyon, kayma (slippage) ve risk parametreleriyle simüle eder.")
         sym = st.sidebar.text_input("Hisse Kodu (Örn: EREGL)", "KCHOL")
         capital = st.sidebar.number_input("Başlangıç Sermayesi (₺)", min_value=1000, value=100000)
         comms = st.sidebar.number_input("İşlem Başına Komisyon (%)", min_value=0.0, value=0.2, step=0.1) / 100
@@ -1443,11 +1338,19 @@ def main():
             if "error" in res:
                 st.error(res["error"])
             else:
-                c1, c2, c3, c4 = st.columns(4)
-                c1.metric("Nihai Portföy Değeri", f"₺{res['final_equity']:,.2f}", f"{res['total_return_pct']:.2f}%")
-                c2.metric("Toplam İşlem Sayısı", f"{res['number_of_trades']}")
-                c3.metric("Maksimum Kayıp (Drawdown)", f"{res['max_drawdown_pct']:.2f}%", delta_color="inverse")
-                c4.metric("Al&Tut (Buy-Hold) Getirisi", f"{res['buy_and_hold_return_pct']:.2f}%")
+                st.markdown("### 📊 Backtest Sonuçları (Alfa ve Performans)")
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Nihai Portföy Değeri", f"₺{res['final_equity']:,.2f}", f"{res['total_return_pct']:.2f}% (Brüt Getiri)")
+                c2.metric("Maksimum Kayıp (Drawdown)", f"{res['max_drawdown_pct']:.2f}%", delta_color="inverse")
+                c3.metric("Toplam İşlem Sayısı", f"{res['number_of_trades']}")
+
+                st.markdown("#### 🥇 Piyasa Kıyaslaması (Alfa Üretimi)")
+                ac1, ac2, ac3 = st.columns(3)
+                ac1.metric("Risksiz Getiri (Mevduat)", f"{res.get('risk_free_return_pct', 0):.2f}%")
+                ac2.metric("Buy&Hold (Al & Tut) Getirisi", f"{res.get('buy_and_hold_return_pct', 0):.2f}%")
+                
+                alpha_rf = res.get('alpha_rf', 0)
+                ac3.metric("Reel Alfa (Mevduat Üstü)", f"{alpha_rf:.2f}%", delta=f"{alpha_rf:.2f}%", delta_color="normal" if alpha_rf >= 0 else "inverse")
                 
                 st.plotly_chart(create_equity_curve_chart(res['equity_curve'], sym.upper()), use_container_width=True)
                 
@@ -1459,6 +1362,7 @@ def main():
 
     elif mode == "📈 Sanal Portföy":
         st.title("📈 Sanal Portföy Yönetimi")
+        st.caption("Sanal portföyünüze eklediğiniz hisselerin kar/zarar durumunu takip edebilir, aynı zamanda **100 indikatörlü ana sinyal motorunun** portföyünüzdeki hisseler için güncel tavsiyelerini izleyebilirsiniz.")
         st.markdown("Beğendiğiniz hisseleri sanal olarak alıp, zaman içindeki başarınızı takip edebilirsiniz.")
 
         def save_portfolio_changes():
@@ -1699,6 +1603,7 @@ def main():
 
     elif mode == "🏆 Stratejik Seçki (Top Picks)":
         st.title("🏆 Stratejik Seçki (Top Picks) - Pro Terminal")
+        st.caption("Bu modül, **100 adet teknik indikatör skorunu**, temel finansal verileri ve yabancı takas oranlarını harmanlayarak, borsadaki en yüksek potansiyelli 15 hisseyi özel bir algoritma ile bulur.")
         st.markdown("""
         Bu modül, seçtiğiniz hisse havuzundaki tüm hisseleri **8 farklı boyutta** derinlemesine analiz eder:
         - 📊 Teknik İndikatörler (RSI, MACD, SMA, EMA vb.)
@@ -1959,239 +1864,6 @@ def main():
             st.markdown("---")
             st.warning("⚠️ **Yasal Uyarı:** Bu sonuçlar teknik ve istatistiksel analize dayanmaktadır. Kesinlikle yatırım tavsiyesi niteliği taşımaz.")
 
-    elif mode == "🌟 Haber Alpha (Alpha Discovery)":
-        st.title("🌟 Haber Alpha (Alpha Discovery)")
-        st.markdown("""
-        Bu VIP modül, teknik analizin ötesine geçerek piyasadaki **Haber-Fiyat Uyuşmazlıkları**nı tespit eder.
-        Investing.com Türkiye haber ağını saniyeler içinde tarar, pozitif ayrışma emareleri gösteren şirketlerin son haberlerini **Gemini 3.1 Pro (Flash)** yapay zekasına sokarak şunları denetler:
-        - 🧩 **Haberin Niteliği** (Stratejik birleşme mi, olağan bir duyuru mu?)
-        - ⏳ **Etki Vadesi** (Kaç gün veya hafta fiyata yön verir?)
-        - 💎 **Potansiyel Alpha Skoru** (KAP düşmesine rağmen fiyat henüz hareketlenmemişse fırsat skoru artar)
-        """)
-        
-        st.info("💡 Sistem anlık olarak ulusal borsa haber akışlarına (RSS) canlı bağlanıp binlerce veri setini paralel analiz eder (Çalışması ortalama 30-60 SN sürebilir).")
-        
-        if st.button("🚀 Alpha Avını Başlat", type="primary"):
-            from news_alpha_analyzer import run_alpha_discovery_pipeline
-            p_bar = st.progress(0, text="Haber akışları toplanıyor...")
-            alpha_res_df = run_alpha_discovery_pipeline(progress_bar=p_bar)
-            p_bar.empty()
-            
-            if not alpha_res_df.empty:
-                st.success(f"Taramalar tamamlandı! Keşfedilen potansiyel Alpha hisse sayısı: {len(alpha_res_df)}")
-                
-                # Checkbox mantığı
-                alpha_res_df.insert(0, "Seç", False)
-                
-                def style_alpha(row):
-                    styles = [''] * len(row)
-                    for i, col in enumerate(alpha_res_df.columns):
-                        val = row[col]
-                        if col == 'Önem Skoru':
-                            if val >= 80: styles[i] = 'background-color: #2d6a2e; color: white; font-weight: bold'
-                            elif val >= 60: styles[i] = 'background-color: #b7950b; color: black; font-weight: bold'
-                        elif col == 'AI Tahmini':
-                            if str(val).upper() == 'EVET': styles[i] = 'color: #00ff00; font-weight: bold'
-                            elif str(val).upper() == 'HAYIR': styles[i] = 'color: #ff4c4c; font-weight: bold'
-                    return styles
-                
-                edited_alpha = st.data_editor(
-                    alpha_res_df.style.apply(style_alpha, axis=1),
-                    column_config={
-                        "Seç": st.column_config.CheckboxColumn("Seç", default=False),
-                        "Önem Skoru": st.column_config.ProgressColumn("Alpha Skoru", format="%d", min_value=0, max_value=100)
-                    },
-                    disabled=[col for col in alpha_res_df.columns if col != "Seç"],
-                    hide_index=True,
-                    use_container_width=True,
-                    key="alpha_editor"
-                )
-                
-                selected_alphas = edited_alpha[edited_alpha["Seç"] == True]
-                if not selected_alphas.empty:
-                    st.write(f"✅ {len(selected_alphas)} Alpha listeye alındı.")
-                    with st.expander("📥 Seçilenleri Portföye Ekle", expanded=True):
-                        adet = st.number_input("Varsayılan Adet", min_value=1.0, value=100.0, key="alpha_adet")
-                        if st.button("🌟 Listeyi Toplu Ekle", type="primary", key="alpha_ekle"):
-                            for _, row in selected_alphas.iterrows():
-                                ticker = row['Sembol']
-                                current_px = get_live_price(ticker)
-                                pf.alis_yap(current_user, ticker, adet, current_px, not_text="Alpha Discovery üzerinden eklendi.")
-                            st.success("Seçilen Alpha adayları Sanal Portföyünüze dinamik korumalarıyla birlikte (SL/TP) eklendi!")
-            else:
-                st.warning("Şu anki piyasa koşullarında net bir fiyat-haber (Alpha) ayrıcalığı bulunamadı.")
-                
-
-    elif mode == "🧨 Günlük Açılış Radarı (Sniper)":
-        st.title("🧨 Günlük Açılış Radarı (Morning Sniper)")
-        st.markdown(f"""
-        <div style="background-color: #1e1e1e; color: white; padding: 15px; border-radius: 10px; border-left: 5px solid #ff4757; margin-bottom: 20px;">
-            <b>Göreviniz:</b> Borsa açılışında momentumu en yüksek, haber destekli ve risk/getiri oranı optimize edilmiş "Ateşlenmeye Hazır" 5 hisseyi bulmak.
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Tarama Kapsamı Seçicisi
-        sniper_scope = st.radio("Tarama Kapsamı Seçin", ["BIST 30", "BIST 100", "BIST Tüm"], horizontal=True)
-        
-        scope_list = BIST100_SYMBOLS
-        if sniper_scope == "BIST 30": scope_list = BIST30_SYMBOLS
-        elif sniper_scope == "BIST Tüm": scope_list = BIST_ALL_SYMBOLS
-
-        if st.button(f"🔴 CANLI {sniper_scope} TARAMASINI BAŞLAT", type="primary"):
-            with st.spinner(f"Sniper algoritması {sniper_scope} listesini tarıyor..."):
-                sniper_results = get_morning_sniper_candidates(scope_list)
-                st.session_state['sniper_results'] = sniper_results
-                st.success(f"Analiz tamamlandı! En potansiyelli {len(sniper_results)} fırsat bulundu.")
-
-        if 'sniper_results' in st.session_state and st.session_state['sniper_results']:
-            results = st.session_state['sniper_results']
-            
-            # Kart tasarımı ile göster
-            for res in results:
-                with st.container():
-                    c1, c2, c3 = st.columns([1, 2, 1])
-                    
-                    with c1:
-                        st.markdown(f"""
-                        <div style="background-color: #111; padding: 20px; border-radius: 15px; border: 1px solid #333; text-align: center;">
-                            <h1 style="color: #ff4757; margin:0;">{res['ticker']}</h1>
-                            <div style="color: #888; font-size: 0.9rem;">Sniper Skoru</div>
-                            <h2 style="color: #26de81; margin:0;">{res['score']}</h2>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    
-                    with c2:
-                        st.markdown(f"### 🎯 İşlem Planı")
-                        st.markdown(f"**Neden:** {res['reason']}")
-                        st.info(f"📰 **Son Önemli Haber:** {res['news']}")
-                        
-                    with c3:
-                        st.markdown(f"**💰 Seviyeler**")
-                        st.markdown(f"🟢 **Giriş:** {res['entry']} ₺")
-                        st.markdown(f"🎯 **Hedef:** {res['target']} ₺ (%{res['target_pct']}+)")
-                        st.markdown(f"🛑 **Stop:** {res['stop']} ₺")
-                        
-                        if st.button(f"📥 Portföye Ekle ({res['ticker']})", key=f"add_{res['ticker']}"):
-                            pf.alis_yap(current_user, res['ticker'], 1, res['entry'], not_text="Morning Sniper sinyali.")
-                            st.toast(f"{res['ticker']} Portföye eklendi!")
-                    
-                    st.markdown("---")
-        else:
-            st.info("Henüz bir tarama yapılmadı veya açılış kriterlerine uygun (High Probability) bir fırsat bulunamadı. Taramayı başlatmak için butona basın.")
-
-    # Varant Analiz Terminali modülü kaldırıldı (v2.3.0)
-
-
-    elif mode == "🎯 20 Günlük Trader Disiplini":
-        st.title("🎯 Sanal Fon Yönetimi & Psikoloji Disiplini")
-        st.markdown("""
-        Burası sadece işlemlerinizi kaydettiğiniz yer değil, **Mental Asistanınızdır.** 
-        Maksimum kârı değil, **sürdürülebilir büyüme ve sermaye korumasını** (Position Sizing) hedefler.
-        """)
-        
-        # COOLDOWN (ZORUNLU MOLA) KONTROLÜ
-        cd_status = tgm.check_cooldown_status(current_user)
-        if cd_status['is_cooldown']:
-            st.error(cd_status['message'])
-            st.markdown("""
-            <div style="background-color: #7b241c; padding: 30px; text-align: center; border-radius: 10px;">
-                <h1 style="color: white; font-size: 50px;">🛑 İşlem Yasak!</h1>
-                <h3 style="color: #f1948a;">Psikolojiniz hasar aldı. İntikam işlemleri yapmaktan kaçının.</h3>
-            </div>
-            """, unsafe_allow_html=True)
-            st.stop() # Sayfanın geri kalanını yükleme, kitlenme sağla!
-        else:
-            if cd_status['loss_count'] > 0:
-                st.warning(cd_status['message'])
-
-        # --- Dashboard ---
-        col1, col2, col3, col4 = st.columns(4)
-        capital = col1.number_input("Başlangıç Sermayesi (TL)", min_value=1000, value=100000, step=1000)
-        daily_target_pct = col2.number_input("Günlük Hedef (%)", min_value=0.1, max_value=10.0, value=3.0)
-        risk_pct = col3.number_input("İşlem Başına Risk (%)", min_value=0.1, max_value=5.0, value=1.0, help="Sermayenizin en fazla yüzde kaçını tek işlemde kaybedebilirsiniz?")
-        target_days = col4.number_input("Hedeflenen Başarı Günü", min_value=1, max_value=20, value=20)
-        
-        fixed_daily_profit = (capital * daily_target_pct / 100)
-        final_goal = capital * (1 + (daily_target_pct / 100))**target_days # Bileşik Getiri Hesabı
-        
-        stats = tgm.get_trading_stats(current_user)
-        current_balance = capital + stats['total_profit']
-        progress_pct = min(100.0, (stats['success_days'] / target_days) * 100) if target_days > 0 else 0
-        
-        st.markdown("---")
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("💰 Mevcut Bakiye", f"{current_balance:,.0f} TL")
-        m2.metric("🏆 Uzun Vade Hedefi (Bileşik)", f"{final_goal:,.0f} TL")
-        m3.metric("🔥 Kazanma Serisi (Streak)", f"{stats['streak']} Gün")
-        m4.metric("📈 Win Rate", f"%{stats['win_rate']}")
-        
-        st.markdown("<br>", unsafe_allow_html=True)
-        m5, m6 = st.columns(2)
-        m5.info(f"💡 **En Başarılı Stratejiniz:** {stats['best_strategy']}")
-        m6.error(f"⚠️ **En Çok Kaybettiren Duygu:** {stats['worst_emotion']}")
-        
-        st.write("**📊 20 Günlük İlerleme**")
-        st.progress(progress_pct / 100, text=f"Hedef Yolculuğu: %{progress_pct:.1f}")
-
-        # --- Pozisyon Boyutlandırma & Asistan ---
-        st.markdown("---")
-        st.subheader("⚖️ Akıllı Lot ve Risk Boyutlandırma")
-        p1, p2, p3 = st.columns([1, 1, 1.5])
-        
-        trade_sym_calc = p1.text_input("Hisse Sembolü", "THYAO")
-        stop_level = p2.number_input("Planlanan Manuel Stop Fiyatı (TL)", min_value=0.01, format="%.2f", step=0.5)
-        
-        if trade_sym_calc and stop_level > 0:
-            livepx = get_live_price(trade_sym_calc)
-            if livepx > 0 and stop_level < livepx:
-                pos_info = tgm.calculate_position_size(current_balance, risk_pct, livepx, stop_level)
-                
-                p3.markdown(f"""
-                <div style="background-color: #1e293b; padding: 15px; border-radius: 8px; border-left: 5px solid #3498db;">
-                    <b>Güncel Fiyat:</b> {livepx:,.2f} TL<br>
-                    <b>Maksimum Alınacak Lot:</b> <span style="color:#26de81; font-size:1.2rem; font-weight:bold;">{pos_info['max_shares']} Adet</span><br>
-                    <b>Yatırılacak Maksimum Tutar:</b> {pos_info['max_investment']:,.0f} TL<br>
-                    <b>Olası Zarar Tutarı (Stop Olursa):</b> <span style="color:#ff4757;">-{pos_info['actual_risk_taken']:,.0f} TL</span>
-                </div>
-                """, unsafe_allow_html=True)
-            elif stop_level >= livepx:
-                p3.warning("Stop seviyesi güncel fiyattan düşük olmalıdır.")
-        
-        # --- Günlük İşlem Günlüğü (Trade Journal) ---
-        st.markdown("---")
-        st.subheader("📝 Psikolojik İşlem Günlüğü")
-        
-        with st.form("trade_journal_form"):
-            col_f1, col_f2 = st.columns(2)
-            log_sym = col_f1.text_input("İşlem Yapılan Hisse (Örn: ASELS)").upper()
-            log_profit = col_f1.number_input("Elde Edilen Net Kâr / Zarar (TL)", step=100.0)
-            
-            strat_options = ["VWAP Ayrışması", "Squeeze (Sıkışma)", "Destek Dönüşü", "Haber/KAP", "SMC (Likidite Süpürme)", "Formasyon Kırılımı", "Diğer"]
-            emo_options = ["Nötr / Kurallara Uydum", "Kendinden Emin", "FOMO (Fırsatı Kaçırma Korkusu)", "Panik/Heyecan", "İntikam İşlemi", "Aşırı Özgüven"]
-            
-            log_strat = col_f2.selectbox("Kullanılan Strateji Nedir?", strat_options)
-            log_emo = col_f2.selectbox("Pozisyona Girerken Duygunuz Neydi?", emo_options)
-            
-            submitted = st.form_submit_button("📓 Günlüğe Kaydet")
-            if submitted and log_sym:
-                is_success = log_profit >= 0
-                tgm.save_daily_result(current_user, log_sym, is_success, log_profit, daily_target_pct, log_strat, log_emo)
-                st.success("İşlem başarıyla psikoloji günlüğüne kaydedildi!")
-                st.rerun()
-
-        # --- Gamification / Simülasyon ---
-        with st.expander("📈 Bileşik Getiri (Compounding) Haritam"):
-            comp_data = tgm.get_compounding_projection(capital, daily_target_pct, stats['success_days'], target_days)
-            st.dataframe(pd.DataFrame(comp_data).style.apply(lambda x: ['background: #064e3b' if x['Durum'] == 'Tamamlandı' else '' for i in x], axis=1), use_container_width=True)
-
-        with st.expander("📖 Geçmiş İşlemlerim ve Analizleri"):
-            if not stats['raw_df'].empty:
-                st.dataframe(stats['raw_df'][['date', 'symbol', 'is_success', 'profit_amount', 'strategy', 'emotion']].sort_values(by="date", ascending=False), use_container_width=True)
-            else:
-                st.info("Henüz kayıtlı işlem bulunmuyor.")
-    # ============================================================
-    # ⚠️ RİSK YÖNETİM MERKEZİ
-    # ============================================================
     elif mode == "⚠️ Risk Yönetim Merkezi":
         st.title("⚠️ Risk Yönetim Merkezi")
         st.caption("Pozisyon büyüklüğü hesaplama, ATR bazlı stop seviyeleri, Kelly Criterion ve portföy risk analizi.")

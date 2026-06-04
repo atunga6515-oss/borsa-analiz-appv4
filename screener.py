@@ -15,7 +15,7 @@ from indicators import (calculate_indicators, generate_signals_and_score,
                         detect_liquidity_sweep, calculate_obv_divergence)
 from patterns import detect_candlestick_patterns
 from support_resistance import calculate_best_zones
-import trading_goal_manager as tgm
+
 from takas_engine import get_takas_data
 
 # ============================================================
@@ -281,7 +281,7 @@ def _analyze_single_stock(sym: str, market_regime: dict = None) -> dict:
             return None
             
         df = df.copy()
-        df = calculate_indicators(df)
+        df = calculate_indicators(df, ticker=sym)
         last = df.iloc[-1]
         sig = generate_signals_and_score(df, ticker=sym, market_regime=market_regime)
         if sig.get('decision') == 'Hata':
@@ -392,9 +392,11 @@ def _analyze_single_stock(sym: str, market_regime: dict = None) -> dict:
             
         tek_skor = sig['score']
         tem_skor = fund_data['fundamental_score']
+        core_score = sig.get('core_score', 50)
+        core_decision = sig.get('core_decision', sig.get('decision', 'Nötr'))
         
-        # V6 HİBRİT SKOR: %60 Teknik, %40 Temel
-        v6_hybrid_score = round((tek_skor * 0.6) + (tem_skor * 0.4), 1)
+        # V6 HİBRİT SKOR: %40 Core (SSOT), %30 Modül Overlay (Teknik), %30 Temel
+        v6_hybrid_score = round((core_score * 0.4) + (tek_skor * 0.3) + (tem_skor * 0.3), 1)
         
         # Graham Güvenlik Marjı / Potansiyel (%)
         g_val = fund_data.get('graham_value', 0.0)
@@ -433,7 +435,7 @@ def _analyze_single_stock(sym: str, market_regime: dict = None) -> dict:
             "Sıkışma Durumu": sq_text,
             "Hacim Diverjans": obv_text,
             "VWAP Uzaklık": f"%{vwap_dist:.1f}",
-            "Piyasa Kararı": sig['decision'],
+            "Piyasa Kararı": core_decision,
             "Güven Skoru (PGS)": sig['pgs'],
             "ADX": round(float(last.get('ADX_14', 0)), 1),
             "1D+1H Uyum": trend_uyum,

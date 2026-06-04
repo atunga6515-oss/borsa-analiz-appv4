@@ -3,6 +3,9 @@ import numpy as np
 import ta
 import streamlit as st
 from patterns import detect_candlestick_patterns
+from signals_engine import calculate_100_indicators, get_core_signal
+
+_CACHE_INDICATORS = {}
 
 def calculate_vwap(df: pd.DataFrame, window: int = 5) -> pd.Series:
     """Son N günün Hacim Ağırlıklı Ortalama Fiyatını (VWAP) hesaplar."""
@@ -10,10 +13,19 @@ def calculate_vwap(df: pd.DataFrame, window: int = 5) -> pd.Series:
     vwap = (typical_price * df['Volume']).rolling(window=window).sum() / df['Volume'].rolling(window=window).sum()
     return vwap
 
-def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
+def calculate_indicators(df: pd.DataFrame, ticker: str = None) -> pd.DataFrame:
     """
     'ta' kütüphanesini kullanarak 20+ teknik indikatörü veri setine ekler.
+    100-İndikatörlü (SSOT) hesaplama da burada entegre edilmiştir.
     """
+    global _CACHE_INDICATORS
+    
+    # 3 Altın Kural - Kural 1: Caching mekanizması
+    if ticker and ticker in _CACHE_INDICATORS:
+        cached_df, last_date = _CACHE_INDICATORS[ticker]
+        if not df.empty and df.index[-1] == last_date:
+            return cached_df.copy()
+
     if df.empty or len(df) < 50:
          return df
 
@@ -72,6 +84,12 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
         
         # VWAP
         df['VWAP_5'] = calculate_vwap(df, window=5)
+
+        # 100 İndikatör motoruna aktar (SSOT Pipeline Birleşimi)
+        df = calculate_100_indicators(df)
+
+        if ticker:
+            _CACHE_INDICATORS[ticker] = (df.copy(), df.index[-1])
 
         return df
     except Exception:
@@ -241,7 +259,7 @@ def get_market_regime(xu100_df: pd.DataFrame) -> dict:
         return {"mode": "Normal", "is_bear": False, "daily_chg": 0.0, "rsi": 50.0}
     
     try:
-        xu100_df = calculate_indicators(xu100_df)
+        xu100_df = calculate_indicators(xu100_df, ticker="XU100")
         last = xu100_df.iloc[-1]
         prev = xu100_df.iloc[-2]
         
@@ -386,6 +404,23 @@ def generate_signals_and_score(df: pd.DataFrame, ticker: str = "", market_regime
         elif final_score <= 30: decision = "Güçlü Sat"
         else: decision = "Nötr"
 
+        # --- YENİ SSOT EKLENTİSİ: CORE TECHNICAL SCORE ---
+        try:
+            core_result = get_core_signal(df)
+            core_decision = core_result['decision']
+            core_score = core_result['score']
+            buy_votes = core_result.get('buy_votes', 0)
+            sell_votes = core_result.get('sell_votes', 0)
+            total_votes = core_result.get('total_votes', 0)
+            core_votes_list = core_result.get('core_votes_list', [])
+        except Exception:
+            core_decision = "Nötr"
+            core_score = 50
+            buy_votes = 0
+            sell_votes = 0
+            total_votes = 0
+            core_votes_list = []
+
         # --- 3. GÜÇLÜ ONAY TEYİDİ ---
         # Eğer teknik AL diyorsa ve haber duygusu ÇOK POZİTİF (+0.6 üstü) ise
         if decision in ["Al", "Güçlü Al"] and sentiment_score > 0.6:
@@ -445,33 +480,46 @@ def generate_signals_and_score(df: pd.DataFrame, ticker: str = "", market_regime
         decision = label_map.get(decision, decision)
         if reversal['detected']: decision = "🔥 Tepki Potansiyeli"
         
-        # Risk / ATR
+        # Risk / ATR & R/R Hesabı
         atr = last.get('ATRr_14', close_price * 0.03)
+        # Trailing Stop (Izleyen Stop) Hesabi
+        try:
+            lookback = 20
+            highest_high = float(df['High'].rolling(window=lookback).max().iloc[-1])
+            trailing_stop = round(highest_high - (atr * 2.5), 2)
+            if trailing_stop > close_price:
+                trailing_stop = round(close_price * 0.99, 2)
+        except Exception:
+            trailing_stop = round(close_price - (atr * 1.5), 2)
+
         risk = {
             "SL": round(close_price - (atr * 1.5), 2),
             "TP1": round(close_price + (atr * 3.0), 2),
-            "TP2": round(close_price + (atr * 5.0), 2)
+            "TP2": round(close_price + (atr * 5.0), 2),
+            "TrailingStop": trailing_stop
         }
-
-        # R/R Rasyosu Hesaplama
-        tp1 = risk["TP1"]
-        sl = risk["SL"]
-        diff_down = close_price - sl
-        if diff_down == 0:
-            rr_ratio = 0.0
-        else:
-            rr_ratio = (tp1 - close_price) / diff_down
+        
+        # RR Rasyosu
+        diff_down = close_price - risk["SL"]
+        rr_ratio = (risk["TP1"] - close_price) / diff_down if diff_down > 0 else 5.0
         rr_ratio = max(0.0, rr_ratio)
 
+        
         return {
             "score": final_score,
-            "pgs": pgs_score if 'pgs_score' in locals() else 50,
+            "core_decision": core_decision,
+            "core_score": core_score,
+            "buy_votes": buy_votes,
+            "sell_votes": sell_votes,
+            "total_votes": total_votes,
+            "core_votes_list": core_votes_list,
             "decision": decision,
+            "pgs": pgs_score,
             "conviction_level": conviction_level,
-            "details": {"Teknik": round(tech_total,1), "Duygu": round(sent_normalized,1)},
+            "details": signals,
             "summary": "\n".join(summary),
             "risk": risk,
             "rr_ratio": round(rr_ratio, 2)
         }
     except Exception as e:
-        return {"score": 50, "pgs": 50, "decision": "Hata", "summary": str(e), "risk": {}, "details": {}, "rr_ratio": 0.0}
+        return {"score": 50, "pgs": 50, "decision": "Hata", "summary": str(e), "risk": {}, "details": {}, "rr_ratio": 0.0, "buy_votes":0, "sell_votes":0, "total_votes":0, "core_votes_list":[]}

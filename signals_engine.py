@@ -2,8 +2,8 @@ import pandas as pd
 import numpy as np
 import ta
 import warnings
-from indicators import calculate_indicators
 
+# Circular importu önlemek için indicators.py çağrısı kaldırıldı. Pipeline'ı indicators.py yönetecek.
 # Suppress pandas fragmentation warnings
 warnings.simplefilter(action='ignore', category=pd.errors.PerformanceWarning)
 
@@ -23,11 +23,8 @@ def calculate_100_indicators(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty or len(df) < 10:
         return df
 
-    try:
-        # 0. indicators.py'deki temel indikatörleri hesapla
-        df = calculate_indicators(df)
-    except Exception:
-        pass
+    # 0. Temel indikatörlerin daha önce indicators.py'den hesaplandığı varsayılır.
+
 
     # 1. SMA Varyasyonları (12 adet)
     for w in [5, 10, 15, 20, 25, 30, 40, 50, 52, 75, 100, 150, 200]:
@@ -408,6 +405,89 @@ def get_all_indicator_rules(df: pd.DataFrame) -> tuple:
         rules[f"VWAP {w} Fiyat Trendi"] = lambda df, c=col: np.where(df[c].isna(), 0, np.where(df['Close'] > df[c], 1, -1))
 
     return df, rules
+
+def get_core_signal(df: pd.DataFrame) -> dict:
+    """
+    100-İndikatörlü (Core Technical Score) vektörel hızlı hesaplayıcı.
+    Sadece son günün verisiyle (vektörize edilmiş DataFrame üzerinden) oylama yapar.
+    Dynamic Fallback kuralını (200 günden az verisi olan IPO'lar için) içerir.
+    """
+    df, rules = get_all_indicator_rules(df)
+    
+    total_weight = 0
+    buy_votes = 0
+    sell_votes = 0
+    core_votes_list = []
+    
+    # 3 Altın Kural - Kural 2: Dynamic Fallback (Yeni Halka Arzlar İçin Adaptasyon)
+    # Eğer hisse 200 günden kısa geçmişe sahipse, uzun vadeli kuralların ağırlığı düşürülür (veya sıfırlanır)
+    # ve kısa vadeli momentum göstergelerinin ağırlığı artırılarak skor normalize edilir.
+    data_length = len(df)
+    is_ipo = data_length < 200
+    
+    # Kural 1: Vektörel (Vectorized) Hız Kuralı -> Döngü (for row in df) kullanılmaz. Sadece serinin son elemanı (iloc[-1]) alınır.
+    for name, rule_func in rules.items():
+        weight = 10  # Standart ağırlık
+        
+        if is_ipo:
+            # Uzun vadeli kuralları muaf tut (Ağırlık = 0)
+            if any(term in name for term in ["200", "150", "100"]):
+                continue 
+            # Kısa vadeli trend ve momentuma ağırlık ver
+            elif any(term in name for term in ["5", "10", "14", "RSI", "MACD", "Stoch"]):
+                weight = 20
+                
+        try:
+            # rule_func 1 (AL), -1 (SAT) veya 0 (NÖTR) dönen bir numpy array / pandas series'tir
+            sig_array = rule_func(df)
+            last_sig = sig_array[-1] if isinstance(sig_array, (np.ndarray, list)) else sig_array.iloc[-1]
+            
+            # Sonuç NaN değilse oylamaya kat
+            if pd.notna(last_sig):
+                if last_sig == 1:
+                    total_weight += weight
+                    buy_votes += weight
+                    dec_str = "AL 🟢"
+                elif last_sig == -1:
+                    total_weight += weight
+                    sell_votes += weight
+                    dec_str = "SAT 🔴"
+                else:
+                    total_weight += weight
+                    dec_str = "NÖTR ⚖️"
+                core_votes_list.append({"İndikatör/Kural": name, "Durum": dec_str, "Ağırlık Puanı": weight})
+        except Exception:
+            pass
+
+    if total_weight == 0:
+        return {"decision": "Nötr", "buy_pct": 50, "sell_pct": 50, "score": 50}
+        
+    buy_pct = (buy_votes / total_weight) * 100
+    sell_pct = (sell_votes / total_weight) * 100
+    
+    # Core Signal Karar Mekanizması
+    if buy_pct >= 60:
+        dec = "Güçlü Al"
+    elif buy_pct >= 50:
+        dec = "Al"
+    elif sell_pct >= 60:
+        dec = "Güçlü Sat"
+    elif sell_pct >= 50:
+        dec = "Sat"
+    else:
+        dec = "Nötr"
+        
+    # Core Technical Score (Teknik Skor = Alım Yüzdesi)
+    return {
+        "decision": dec, 
+        "buy_pct": round(buy_pct, 1), 
+        "sell_pct": round(sell_pct, 1), 
+        "score": round(buy_pct, 1),
+        "buy_votes": buy_votes,
+        "sell_votes": sell_votes,
+        "total_votes": total_weight,
+        "core_votes_list": core_votes_list
+    }
 
 def evaluate_individual_indicators(df: pd.DataFrame) -> dict:
     """

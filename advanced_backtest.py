@@ -72,11 +72,20 @@ def run_advanced_backtest(df_full: pd.DataFrame, initial_capital: float = 100000
     bh_final = buy_hold_qty * df_full['Close'].iloc[-1]
     bh_return = ((bh_final - initial_capital) / initial_capital) * 100
 
+    # Risksiz Getiri ve Alfa Hesaplamaları
+    risk_free_annual = 40.0 # BIST için ortalama yıllık risksiz mevduat getirisi varsayımı
+    risk_free_period = risk_free_annual * (lookback_days / 365)
+    alpha = total_return - bh_return
+    alpha_rf = total_return - risk_free_period
+
     return {
         "final_equity": final_equity,
         "total_return_pct": total_return,
         "max_drawdown_pct": max_drawdown,
         "buy_and_hold_return_pct": bh_return,
+        "risk_free_return_pct": risk_free_period,
+        "alpha_bh": alpha,
+        "alpha_rf": alpha_rf,
         "number_of_trades": len(trades),
         "equity_curve": equity_df,
         "trades": trades

@@ -90,17 +90,22 @@ def deep_analyze_stock(sym: str, market_regime: dict = None) -> dict:
     result = {"ticker": sym, "error": None, "summary": ""}
 
     # 1. Veri Çek
-    df = fetch_data(sym, interval="1d", period="6mo")
+    df = fetch_data(sym, interval="1d", period="1y")
     if df.empty or len(df) < 50:
         result["error"] = "Yetersiz veri"
         return result
+        
+    df = df.copy()
 
     # 1.1 Haber Duygusu Çek (Gemini AI)
     sent_score, news_list = get_sentiment_summary(sym)
     sent_100 = (sent_score + 1) * 50
     
-    df = calculate_indicators(df)
+    df = calculate_indicators(df, ticker=sym)
     sig = generate_signals_and_score(df, ticker=sym, market_regime=market_regime, sentiment_score=sent_score)
+    
+    core_score = sig.get('core_score', 50)
+    core_decision = sig.get('core_decision', sig.get('decision', 'Nötr'))
 
     # 2. Canlı Fiyat
     live_px = get_live_price(sym)
@@ -206,32 +211,36 @@ def deep_analyze_stock(sym: str, market_regime: dict = None) -> dict:
     elif fr_change < -0.5: takas_bonus -= 15
 
     # ============================================================
-    # KOMPOZİT SKOR HESAPLAMA (ADAPTİF AĞIRLIKLANDIRMA)
+    # KOMPOZİT SKOR HESAPLAMA (ADAPTİF AĞIRLIKLANDIRMA - MODULE OVERLAY)
+    # 3 Altın Kural - Kural 3: Katmanlı Skorlama Hiyerarşisi
+    # Core Score (100 İndikatör) ana temel alınır, Top Picks özel kuralları (Overlay) eklenir.
     # ============================================================
     if is_bear:
         # Ayı Piyasası: Temel veriler, Destekten dönüş ve Haberler ön planda
         composite = (
-            tech_score * 0.20 +
+            core_score * 0.25 +
+            tech_score * 0.15 +
             (50 + momentum_bonus) * 0.05 +
             (50 + volume_bonus) * 0.05 +
             (50 + tf_bonus) * 0.05 +
             (50 + pattern_bonus) * 0.05 +
-            (50 + support_bonus) * 0.20 +
-            sent_100 * 0.20 +
-            (50 + reversal_bonus) * 0.20
+            (50 + support_bonus) * 0.10 +
+            sent_100 * 0.15 +
+            (50 + reversal_bonus) * 0.15
         )
     else:
         # Boğa Piyasası: Momentum, Hacim ve Teknik ön planda
         composite = (
-            tech_score * 0.35 +
-            (50 + momentum_bonus) * 0.20 +
-            (50 + volume_bonus) * 0.15 +
-            (50 + tf_bonus) * 0.10 +
+            core_score * 0.25 +
+            tech_score * 0.25 +
+            (50 + momentum_bonus) * 0.15 +
+            (50 + volume_bonus) * 0.10 +
+            (50 + tf_bonus) * 0.05 +
             (50 + pattern_bonus) * 0.05 +
             (50 + support_bonus) * 0.05 +
             sent_100 * 0.05 +
-            (50 + reversal_bonus) * 0.05 +
-            (50 + takas_bonus) * 0.05
+            (50 + reversal_bonus) * 0.02 +
+            (50 + takas_bonus) * 0.03
         )
 
     # 11. Göreceli Güç (Alpha)
@@ -301,7 +310,8 @@ def deep_analyze_stock(sym: str, market_regime: dict = None) -> dict:
     composite = min(100, max(0, round(composite, 1)))
     
     # Karar Mekanizması RSI Doygunluk Güncellemesi
-    karar = sig['decision']
+    karar = core_decision
+
     if composite >= 70 and 'RSI_14' in df.columns and df['RSI_14'].iloc[-1] > 65:
         karar = "🧘 Doygunluk Bölgesi"
         result["summary"] += "\n🧘 RSI Doygunluğu: Kar satışı gelebilir."
