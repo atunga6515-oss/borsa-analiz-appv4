@@ -453,6 +453,16 @@ def generate_signals_and_score(df: pd.DataFrame, ticker: str = "", market_regime
             "TP2": round(close_price + (atr * 5.0), 2)
         }
 
+        # R/R Rasyosu Hesaplama
+        tp1 = risk["TP1"]
+        sl = risk["SL"]
+        diff_down = close_price - sl
+        if diff_down == 0:
+            rr_ratio = 0.0
+        else:
+            rr_ratio = (tp1 - close_price) / diff_down
+        rr_ratio = max(0.0, rr_ratio)
+
         return {
             "score": final_score,
             "pgs": pgs_score if 'pgs_score' in locals() else 50,
@@ -460,7 +470,8 @@ def generate_signals_and_score(df: pd.DataFrame, ticker: str = "", market_regime
             "conviction_level": conviction_level,
             "details": {"Teknik": round(tech_total,1), "Duygu": round(sent_normalized,1)},
             "summary": "\n".join(summary),
-            "risk": risk
+            "risk": risk,
+            "rr_ratio": round(rr_ratio, 2)
         }
     except Exception as e:
-        return {"score": 50, "pgs": 50, "decision": "Hata", "summary": str(e), "risk": {}, "details": {}}
+        return {"score": 50, "pgs": 50, "decision": "Hata", "summary": str(e), "risk": {}, "details": {}, "rr_ratio": 0.0}

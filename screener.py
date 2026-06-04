@@ -276,10 +276,11 @@ def get_watchlist(username: str) -> pd.DataFrame:
 def _analyze_single_stock(sym: str, market_regime: dict = None) -> dict:
     """Tek bir hisseyi analiz eder ve sonuç sözlüğü döndürür. ThreadPool için."""
     try:
-        df = fetch_data(sym, interval="1d", period="6mo")
+        df = fetch_data(sym, interval="1d", period="1y")
         if df.empty or len(df) < 50:
             return None
             
+        df = df.copy()
         df = calculate_indicators(df)
         last = df.iloc[-1]
         sig = generate_signals_and_score(df, ticker=sym, market_regime=market_regime)
@@ -340,6 +341,7 @@ def _analyze_single_stock(sym: str, market_regime: dict = None) -> dict:
         df_1h = fetch_data(sym, interval="1h", period="1mo")
         trend_uyum = "Tekil"
         if not df_1h.empty and len(df_1h) >= 20:
+            df_1h = df_1h.copy()
             df_1h = calculate_indicators(df_1h)
             sig_1h = generate_signals_and_score(df_1h)
             if sig['decision'] in ["Al", "Güçlü Al"] and sig_1h['decision'] in ["Al", "Güçlü Al"]:
